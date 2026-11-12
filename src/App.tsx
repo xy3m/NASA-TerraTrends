@@ -26,6 +26,8 @@ import { RegionalContrastView } from './components/RegionalContrastView';
 import { VariableEncyclopedia } from './components/VariableEncyclopedia';
 import { CustomDataUploader } from './components/CustomDataUploader';
 import { DataExportModal } from './components/DataExportModal';
+
+const StatisticalLab = React.lazy(() => import('./components/StatisticalLab/StatisticalLab'));
 import { 
   Sparkles, 
   Globe2, 
@@ -381,6 +383,19 @@ export const App: React.FC = () => {
               initialCoordinates={selectedRegion.coordinates}
               onAnalyzeCustomData={handleAnalyzeCustomData}
             />
+          </div>
+        )}
+
+        {/* MODE 6: STATISTICAL ANALYSIS LAB */}
+        {currentMode === 'lab' && (
+          <div className="animate-fadeIn">
+            <React.Suspense fallback={
+              <div className="flex items-center justify-center p-16 text-slate-400 font-mono text-xs">
+                Loading Statistical Analysis Lab...
+              </div>
+            }>
+              <StatisticalLab />
+            </React.Suspense>
           </div>
         )}
 

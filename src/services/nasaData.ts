@@ -497,7 +497,7 @@ function getRegionVariableBaseline(region: HotspotRegion, varId: VariableId): Ba
   // Scale seasonality by latitude (flat near equator, strong at mid/high latitudes)
   const latScale = Math.max(0.22, Math.min(1.35, absLat / 40));
 
-  const defaults: Record<VariableId, BaselineConfig> = {
+  const defaults: Partial<Record<VariableId, BaselineConfig>> = {
     temp_air: {
       baseline: +(27 - absLat * 0.45).toFixed(1),
       trendPerYear: 0.028,
@@ -562,7 +562,7 @@ function getRegionVariableBaseline(region: HotspotRegion, varId: VariableId): Ba
     },
   };
 
-  const base = defaults[varId];
+  const base = defaults[varId] || defaults['temp_air']!;
   const override = REGION_OVERRIDES[region.id]?.[varId];
   if (!override) return base;
 
@@ -718,7 +718,7 @@ export async function fetchLiveNasaPowerData(
   }
 }
 
-const VARIABLE_CSV_KEYWORDS: Record<VariableId, string[]> = {
+const VARIABLE_CSV_KEYWORDS: Partial<Record<VariableId, string[]>> = {
   temp_air: ['raw_temp_air', 'temp_air', 't2m', 'air_temp', 'temp', 'temperature'],
   precip: ['raw_precip', 'precip', 'prectotcorr', 'prectot', 'rain', 'rainfall', 'precipitation'],
   ndvi: ['raw_ndvi', 'ndvi', 'greenness', 'vegetation', 'veg'],
@@ -768,7 +768,7 @@ function parseCsvStructure(csvText: string): { lines: string[]; sep: string; col
 }
 
 function findColumnForVariable(cols: string[], dateIdx: number, variableId: VariableId): number {
-  const keywords = VARIABLE_CSV_KEYWORDS[variableId];
+  const keywords = VARIABLE_CSV_KEYWORDS[variableId] || [];
   const exactIdx = cols.findIndex((c, idx) => idx !== dateIdx && keywords.includes(c));
   if (exactIdx !== -1) return exactIdx;
 

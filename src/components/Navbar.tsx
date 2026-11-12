@@ -6,33 +6,44 @@ import {
   BookOpen, 
   UploadCloud, 
   FileText, 
-  Radio
+  Radio,
+  FlaskConical
 } from 'lucide-react';
 
-export type AppMode = 'explorer' | 'detective' | 'contrast' | 'encyclopedia' | 'upload';
-export type DataFeedSource = 'live' | 'calibrated' | 'csv';
+export type AppMode = 'explorer' | 'detective' | 'contrast' | 'encyclopedia' | 'upload' | 'lab';
+export type DataFeedSource = 'live' | 'calibrated' | 'csv' | 'satellite' | 'reanalysis';
 
 const DATA_FEED_META: Record<
-  DataFeedSource,
-  { shortLabel: string; label: string; colorClass: string; pulse: boolean }
+  string,
+  { shortLabel: string; label: string; colorClass: string; pulse: boolean; icon: string }
 > = {
   live: {
-    shortLabel: 'LIVE NASA',
-    label: 'NASA POWER API (Live)',
+    shortLabel: 'NASA POWER',
+    label: 'NASA POWER Reanalysis',
+    colorClass: 'text-cyan-400',
+    pulse: true,
+    icon: '🔄',
+  },
+  satellite: {
+    shortLabel: 'SAT OBS',
+    label: 'Satellite Observation (MODIS/NOAA)',
     colorClass: 'text-emerald-400',
     pulse: true,
+    icon: '🛰️',
   },
   csv: {
     shortLabel: 'CUSTOM CSV',
-    label: 'Custom CSV Upload',
+    label: 'User Upload (CSV/JSON)',
     colorClass: 'text-amber-400',
     pulse: false,
+    icon: '📤',
   },
   calibrated: {
     shortLabel: 'CALIBRATED',
-    label: 'Calibrated Baseline Model',
+    label: 'Calibrated Demo Model',
     colorClass: 'text-[#3EC7F2]',
     pulse: false,
+    icon: '🧪',
   },
 };
 
@@ -148,6 +159,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <UploadCloud className="w-3.5 h-3.5" />
             <span>Custom Data</span>
+          </button>
+
+          <button
+            onClick={() => onSelectMode('lab')}
+            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+              currentMode === 'lab'
+                ? 'bg-purple-600 text-white font-bold shadow-md shadow-purple-600/30'
+                : 'text-slate-400 hover:text-purple-300 hover:bg-slate-800/60'
+            }`}
+          >
+            <FlaskConical className="w-3.5 h-3.5" />
+            <span>Statistical Lab</span>
           </button>
         </nav>
 
