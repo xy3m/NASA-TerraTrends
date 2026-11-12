@@ -59,19 +59,39 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   // Range filter
   const [timeRange, setTimeRange] = useState<'all' | '20y' | '10y'>('all');
 
+  const firstYear = points[0]?.year;
+  const lastYear = points[points.length - 1]?.year;
+  const totalYears = firstYear && lastYear ? Math.max(1, lastYear - firstYear + 1) : 0;
+
+  const rangeOptions = [
+    { key: 'all' as const, label: totalYears > 0 ? `All (${totalYears}y)` : 'All' },
+    ...(totalYears > 20 && lastYear
+      ? [{ key: '20y' as const, label: `${lastYear - 20}–${lastYear}` }]
+      : []),
+    ...(totalYears > 10 && lastYear
+      ? [{ key: '10y' as const, label: `${lastYear - 10}–${lastYear}` }]
+      : []),
+  ];
+
+  const activeRange = rangeOptions.some(opt => opt.key === timeRange) ? timeRange : 'all';
+
   // Filter points based on selected range
   const filteredPoints = React.useMemo(() => {
     if (points.length === 0) return [];
-    if (timeRange === '10y') {
+    if (activeRange === '10y') {
       const minYear = points[points.length - 1].year - 10;
       return points.filter(p => p.year >= minYear);
     }
-    if (timeRange === '20y') {
+    if (activeRange === '20y') {
       const minYear = points[points.length - 1].year - 20;
       return points.filter(p => p.year >= minYear);
     }
     return points;
-  }, [points, timeRange]);
+  }, [points, activeRange]);
+
+  const visibleStart = filteredPoints[0]?.date ?? stats.startDate;
+  const visibleEnd = filteredPoints[filteredPoints.length - 1]?.date ?? stats.endDate;
+  const visibleCount = filteredPoints.length;
 
   const labels = filteredPoints.map(p => p.date);
 
@@ -264,7 +284,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             </h3>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Missions: {variable.missions.join(' • ')} • Window: {stats.startDate} to {stats.endDate} ({stats.sampleCount} pts)
+            Missions: {variable.missions.join(' • ')} • Window: {visibleStart} to {visibleEnd} ({visibleCount} pts)
           </p>
         </div>
 
@@ -273,30 +293,17 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           {/* Time Range Filter */}
           <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-mono">
             <Calendar className="w-3.5 h-3.5 text-slate-400 ml-1.5 mr-1" />
-            <button
-              onClick={() => setTimeRange('all')}
-              className={`px-2.5 py-1 rounded-lg transition-colors ${
-                timeRange === 'all' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              All (35y)
-            </button>
-            <button
-              onClick={() => setTimeRange('20y')}
-              className={`px-2.5 py-1 rounded-lg transition-colors ${
-                timeRange === '20y' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              2004–2024
-            </button>
-            <button
-              onClick={() => setTimeRange('10y')}
-              className={`px-2.5 py-1 rounded-lg transition-colors ${
-                timeRange === '10y' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              2014–2024
-            </button>
+            {rangeOptions.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setTimeRange(key)}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${
+                  activeRange === key ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           <button
