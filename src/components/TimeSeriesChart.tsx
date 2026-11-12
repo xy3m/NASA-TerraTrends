@@ -42,6 +42,7 @@ interface TimeSeriesChartProps {
   stats: TrendAnalysisResult;
   isLoading?: boolean;
   loadingMessage?: string | null;
+  loadingElapsedSeconds?: number;
 }
 
 export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
@@ -51,6 +52,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   stats,
   isLoading = false,
   loadingMessage,
+  loadingElapsedSeconds,
 }) => {
   const chartRef = useRef<any>(null);
 
@@ -290,7 +292,10 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             {isLoading && (
               <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                <span>{loadingMessage || 'Fetching live feed...'}</span>
+                <span>
+                  {loadingMessage || 'Fetching live feed...'}
+                  {loadingElapsedSeconds !== undefined && loadingElapsedSeconds > 0 ? ` (${loadingElapsedSeconds}s)` : ''}
+                </span>
               </span>
             )}
           </div>
@@ -409,19 +414,33 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       {/* Main Chart Canvas */}
       <div className="relative h-72 sm:h-80 md:h-96 w-full pt-2">
         {isLoading && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#030915]/80 backdrop-blur-sm rounded-xl border border-amber-500/30 text-center p-4">
-            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-amber-950/70 border border-amber-500/40 shadow-lg shadow-amber-500/15 mb-3">
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#030915]/85 backdrop-blur-sm rounded-xl border border-amber-500/40 text-center p-6 animate-fadeIn">
+            <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-amber-950/70 border border-amber-500/50 shadow-xl shadow-amber-500/20 mb-3">
               <Loader2 className="w-6 h-6 text-amber-300 animate-spin" />
             </div>
-            <div className="text-sm font-bold text-white">
-              Loading Live Observations for {variable.shortName}
+            <div className="text-sm sm:text-base font-bold text-white flex items-center space-x-2">
+              <span>Retrieving Live Observations for {variable.name}</span>
             </div>
-            <p className="text-xs text-amber-300 font-mono mt-1 max-w-md">
-              {loadingMessage || `Querying ${variable.missions[0] || 'NASA'} data feed...`}
+            <p className="text-xs text-amber-300 font-mono mt-1.5 max-w-lg">
+              {loadingMessage || `Connecting to satellite instrument feeds for ${regionName}...`}
             </p>
-            <span className="text-[11px] text-slate-400 mt-1.5">
-              Please wait — the chart and statistics will update once verified live data arrives.
-            </span>
+
+            {loadingElapsedSeconds !== undefined && loadingElapsedSeconds >= 3 ? (
+              <div className="mt-3 p-3 max-w-md rounded-xl bg-amber-950/40 border border-amber-600/40 text-xs text-amber-200/90 leading-relaxed shadow-inner">
+                <strong className="text-white block mb-0.5">⏳ High-Resolution Observation Extraction in Progress:</strong>
+                NASA/USGS remote servers are slicing multi-year satellite granules on the fly. This can take 10–25 seconds. Please wait while data is validated.
+              </div>
+            ) : (
+              <span className="text-[11px] text-slate-400 mt-2">
+                Verifying live NASA feeds before rendering chart and statistical trends...
+              </span>
+            )}
+
+            {loadingElapsedSeconds !== undefined && loadingElapsedSeconds > 0 && (
+              <div className="mt-2 text-[10px] font-mono text-slate-400">
+                Elapsed: <span className="text-amber-300 font-bold">{loadingElapsedSeconds}s</span>
+              </div>
+            )}
           </div>
         )}
         <Line ref={chartRef} data={{ labels, datasets }} options={chartOptions} />

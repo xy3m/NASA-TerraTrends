@@ -60,6 +60,39 @@ export const App: React.FC = () => {
   const section3Ref = useRef<HTMLElement | null>(null);
   const scrollTargetRef = useRef<'section1' | 'section2' | null>(null);
 
+  // Live feed loading telemetry
+  const [isLoadingFeed, setIsLoadingFeed] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
+  const [loadingElapsed, setLoadingElapsed] = useState<number>(0);
+  const loadingTimerRef = useRef<number | null>(null);
+
+  const startLoadingFeed = (msg: string) => {
+    if (loadingTimerRef.current) clearInterval(loadingTimerRef.current);
+    setIsLoadingFeed(true);
+    setLoadingMessage(msg);
+    setLoadingElapsed(0);
+    const start = Date.now();
+    loadingTimerRef.current = window.setInterval(() => {
+      setLoadingElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+  };
+
+  const stopLoadingFeed = () => {
+    if (loadingTimerRef.current) {
+      clearInterval(loadingTimerRef.current);
+      loadingTimerRef.current = null;
+    }
+    setIsLoadingFeed(false);
+    setLoadingMessage(null);
+    setLoadingElapsed(0);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (loadingTimerRef.current) clearInterval(loadingTimerRef.current);
+    };
+  }, []);
+
   // Export Modal state
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
 
@@ -88,29 +121,41 @@ export const App: React.FC = () => {
   const loadCoordinateData = async (lat: number, lon: number, variableId: VariableId) => {
     const queryId = ++liveQueryIdRef.current;
 
-    // Check connector registry (supports POWER, ORNL MODIS, NOAA Tides, USGS Water)
     const connector = connectorRegistry.getBestConnector(variableId, lat, lon);
-    if (connector?.capabilities.timeSeries) {
-      try {
-        const res = await connector.fetchTimeSeries({ lat, lon, variableId });
-        if (queryId !== liveQueryIdRef.current) return;
-        if (res.points.length >= 24) {
-          setCustomPoints(res.points);
-          setIsLiveNasa(true);
-          setProvenanceTier(res.provenance);
-          return;
+    const targetVar = EARTH_VARIABLES.find(v => v.id === variableId);
+    const initialMsg = connector
+      ? `Querying ${connector.name} for ${targetVar?.shortName || variableId}...`
+      : `Querying NASA POWER data feed for ${targetVar?.shortName || variableId}...`;
+    startLoadingFeed(initialMsg);
+
+    try {
+      // Check connector registry (supports POWER, ORNL MODIS, NOAA Tides, USGS Water)
+      if (connector?.capabilities.timeSeries) {
+        try {
+          const res = await connector.fetchTimeSeries({ lat, lon, variableId });
+          if (queryId !== liveQueryIdRef.current) return;
+          if (res.points.length >= 24) {
+            setCustomPoints(res.points);
+            setIsLiveNasa(true);
+            setProvenanceTier(res.provenance);
+            return;
+          }
+        } catch (err) {
+          console.warn(`Connector ${connector.id} query failed, attempting NASA POWER fallback:`, err);
         }
-      } catch (err) {
-        console.warn(`Connector ${connector.id} query failed, attempting NASA POWER fallback:`, err);
+      }
+
+      // Direct NASA POWER API / calibrated fallback
+      const { points, isLiveNasa: isLive } = await fetchLiveNasaPowerData(lat, lon, variableId);
+      if (queryId !== liveQueryIdRef.current) return;
+      setCustomPoints(points);
+      setIsLiveNasa(isLive);
+      setProvenanceTier(isLive ? 'reanalysis_model' : 'synthetic_demo');
+    } finally {
+      if (queryId === liveQueryIdRef.current) {
+        stopLoadingFeed();
       }
     }
-
-    // Direct NASA POWER API / calibrated fallback
-    const { points, isLiveNasa: isLive } = await fetchLiveNasaPowerData(lat, lon, variableId);
-    if (queryId !== liveQueryIdRef.current) return;
-    setCustomPoints(points);
-    setIsLiveNasa(isLive);
-    setProvenanceTier(isLive ? 'reanalysis_model' : 'synthetic_demo');
   };
 
   // Fetch live connector data on initial load for the default hotspot if supported
@@ -178,6 +223,7 @@ export const App: React.FC = () => {
     rawCsvText?: string
   ) => {
     liveQueryIdRef.current++;
+    stopLoadingFeed();
     scrollTargetRef.current = region.hasCoordinates === false ? 'section2' : 'section1';
     setSelectedRegion(region);
     setSelectedVariable(variable);
@@ -217,6 +263,7 @@ export const App: React.FC = () => {
         onOpenExport={() => setIsExportOpen(true)}
         dataFeedSource={dataFeedSource}
         selectedRegionName={selectedRegion.name}
+        isLoadingFeed={isLoadingFeed}
       />
 
       {/* Main Content Area */}
@@ -364,6 +411,9 @@ export const App: React.FC = () => {
                 variable={selectedVariable}
                 regionName={selectedRegion.name}
                 stats={trendStats}
+                isLoading={isLoadingFeed}
+                loadingMessage={loadingMessage}
+                loadingElapsedSeconds={loadingElapsed}
               />
             </section>
 
