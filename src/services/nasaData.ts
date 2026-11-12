@@ -424,23 +424,57 @@ function getRegionVariableBaseline(regionId: string, varId: VariableId): Baselin
 }
 
 /**
+ * NASA POWER monthly parameters mapped 1:1 to matching units/definitions in EARTH_VARIABLES.
+ * Variables absent from NASA POWER monthly (ndvi, soil_moist m³/m³, tropospheric-only ozone)
+ * are intentionally unmapped so they never silently substitute temperature (T2M).
+ */
+export const NASA_POWER_PARAM_MAP: Partial<Record<VariableId, string>> = {
+  temp_air: 'T2M',          // Temperature at 2 Meters (°C)
+  precip: 'PRECTOTCORR',    // Precipitation Corrected (mm/day -> mm/month)
+  lst_day: 'TS',            // Earth Skin Temperature (°C)
+  evapo: 'EVLAND',          // Evaporation Land (mm/day -> mm/month)
+  aod: 'AOD_55',            // Aerosol Optical Depth 550nm (dimensionless)
+};
+
+function buildCalibratedFallback(
+  lat: number,
+  lon: number,
+  variableId: VariableId
+): TimeSeriesPoint[] {
+  const tempRegion: HotspotRegion = {
+    id: `custom_${lat.toFixed(1)}_${lon.toFixed(1)}`,
+    name: `Custom Location (${lat >= 0 ? lat.toFixed(2) + '°N' : Math.abs(lat).toFixed(2) + '°S'}, ${lon >= 0 ? lon.toFixed(2) + '°E' : Math.abs(lon).toFixed(2) + '°W'})`,
+    countryOrOcean: 'User Query',
+    coordinates: [lat, lon],
+    category: 'Arid / Desert',
+    description: 'User-specified geographic coordinates',
+    keyPhenomenon: 'Geographic Trend Exploration',
+    primaryVariable: variableId,
+  };
+
+  const targetVar = EARTH_VARIABLES.find(v => v.id === variableId) || EARTH_VARIABLES[0];
+  return generateCuratedTimeSeries(tempRegion, targetVar);
+}
+
+/**
  * Fetch live data from official NASA POWER API (https://power.larc.nasa.gov)
- * Public, free, CORS-enabled NASA Earth Science endpoint!
+ * Public, free, CORS-enabled NASA Earth Science endpoint.
  */
 export async function fetchLiveNasaPowerData(
   lat: number,
   lon: number,
   variableId: VariableId
-): Promise<{ points: TimeSeriesPoint[]; isLiveNasa: boolean }> {
-  // Map our internal variables to NASA POWER parameter codes
-  const paramMap: Partial<Record<VariableId, string>> = {
-    temp_air: 'T2M',          // Temperature at 2 Meters (°C)
-    precip: 'PRECTOTCORR',    // Precipitation Corrected (mm/day)
-    lst_day: 'TS',            // Earth Skin Temperature (°C)
-    evapo: 'EVPTRNS',         // Evapotranspiration
-  };
+): Promise<{ points: TimeSeriesPoint[]; isLiveNasa: boolean; statusMessage: string }> {
+  const nasaParam = NASA_POWER_PARAM_MAP[variableId];
+  const targetVar = EARTH_VARIABLES.find(v => v.id === variableId) || EARTH_VARIABLES[0];
 
-  const nasaParam = paramMap[variableId] || 'T2M';
+  if (!nasaParam) {
+    return {
+      points: buildCalibratedFallback(lat, lon, variableId),
+      isLiveNasa: false,
+      statusMessage: `${targetVar.shortName} is not provided by the NASA POWER monthly API; loaded calibrated model data instead.`,
+    };
+  }
 
   const startYear = 1995;
   const endYear = 2024;
@@ -469,21 +503,23 @@ export async function fetchLiveNasaPowerData(
     // Keys are in format "YYYYMM" (e.g. "199501") or "199513" (13 is annual summary)
     for (const key of Object.keys(parameterData)) {
       if (key.length === 6) {
-        const year = key.substring(0, 4);
-        const month = key.substring(4, 6);
-        const monthNum = parseInt(month, 10);
+        const yearStr = key.substring(0, 4);
+        const monthStr = key.substring(4, 6);
+        const yearNum = parseInt(yearStr, 10);
+        const monthNum = parseInt(monthStr, 10);
 
         // Exclude month 13 (annual mean)
         if (monthNum >= 1 && monthNum <= 12) {
           let val = parameterData[key];
           // NASA fill value is -999
-          if (val > -900) {
-            // For precipitation, NASA POWER returns mm/day; convert to mm/month
-            if (nasaParam === 'PRECTOTCORR') {
-              val = val * 30.4;
+          if (typeof val === 'number' && val > -900) {
+            // PRECTOTCORR and EVLAND are returned in mm/day; convert to mm/month
+            if (nasaParam === 'PRECTOTCORR' || nasaParam === 'EVLAND') {
+              const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+              val = val * daysInMonth;
             }
             rawPoints.push({
-              date: `${year}-${month}`,
+              date: `${yearStr}-${monthStr}`,
               value: +val.toFixed(2),
             });
           }
@@ -495,30 +531,19 @@ export async function fetchLiveNasaPowerData(
       throw new Error('Insufficient points returned from live NASA API');
     }
 
+    rawPoints.sort((a, b) => a.date.localeCompare(b.date));
+
     return {
       points: processTimeSeries(rawPoints),
       isLiveNasa: true,
+      statusMessage: `Successfully retrieved live NASA POWER (${nasaParam}) data!`,
     };
   } catch (err) {
     console.warn(`NASA POWER API request failed (${err}), falling back to calibrated model:`, err);
-    // Fall back smoothly to our calibrated generator for the custom lat/lon
-    const tempRegion: HotspotRegion = {
-      id: `custom_${lat.toFixed(1)}_${lon.toFixed(1)}`,
-      name: `Custom Location (${lat >= 0 ? lat.toFixed(2) + '°N' : Math.abs(lat).toFixed(2) + '°S'}, ${lon >= 0 ? lon.toFixed(2) + '°E' : Math.abs(lon).toFixed(2) + '°W'})`,
-      countryOrOcean: 'User Query',
-      coordinates: [lat, lon],
-      category: 'Arid / Desert',
-      description: 'User-specified geographic coordinates',
-      keyPhenomenon: 'Geographic Trend Exploration',
-      primaryVariable: variableId,
-    };
-
-    const targetVar = EARTH_VARIABLES.find(v => v.id === variableId) || EARTH_VARIABLES[0];
-    const points = generateCuratedTimeSeries(tempRegion, targetVar);
-
     return {
-      points,
+      points: buildCalibratedFallback(lat, lon, variableId),
       isLiveNasa: false,
+      statusMessage: `NASA POWER request unavailable for this point; loaded calibrated model data instead.`,
     };
   }
 }

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
   EarthVariable, 
   HotspotRegion, 
@@ -45,6 +45,7 @@ export const App: React.FC = () => {
   // Custom data overrides (from live API or CSV upload)
   const [customPoints, setCustomPoints] = useState<TimeSeriesPoint[] | null>(null);
   const [isLiveNasa, setIsLiveNasa] = useState<boolean>(false);
+  const liveQueryIdRef = useRef<number>(0);
 
   // Export Modal state
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
@@ -70,8 +71,18 @@ export const App: React.FC = () => {
     );
   }, [activePoints, selectedVariable, selectedRegion]);
 
+  // Fetch live NASA POWER data (or calibrated fallback) for coordinates with race guard
+  const loadCoordinateData = async (lat: number, lon: number, variableId: VariableId) => {
+    const queryId = ++liveQueryIdRef.current;
+    const { points, isLiveNasa: isLive } = await fetchLiveNasaPowerData(lat, lon, variableId);
+    if (queryId !== liveQueryIdRef.current) return;
+    setCustomPoints(points);
+    setIsLiveNasa(isLive);
+  };
+
   // Handle region selection from map or list
   const handleSelectRegion = (region: HotspotRegion) => {
+    liveQueryIdRef.current++;
     setSelectedRegion(region);
     setCustomPoints(null);
     setIsLiveNasa(false);
@@ -97,11 +108,7 @@ export const App: React.FC = () => {
     };
 
     setSelectedRegion(customRegion);
-
-    // Fetch live data from NASA POWER API
-    const { points, isLiveNasa: isLive } = await fetchLiveNasaPowerData(lat, lon, selectedVariable.id);
-    setCustomPoints(points);
-    setIsLiveNasa(isLive);
+    await loadCoordinateData(lat, lon, selectedVariable.id);
   };
 
   // Handle Custom Data Studio analysis callback
@@ -111,6 +118,7 @@ export const App: React.FC = () => {
     points: TimeSeriesPoint[],
     isLive: boolean
   ) => {
+    liveQueryIdRef.current++;
     setSelectedRegion(region);
     setSelectedVariable(variable);
     setCustomPoints(points);
@@ -218,7 +226,14 @@ export const App: React.FC = () => {
                 selectedVariableId={selectedVariable.id}
                 onSelectVariable={(v) => {
                   setSelectedVariable(v);
-                  setCustomPoints(null);
+                  if (selectedRegion.id.startsWith('coord_')) {
+                    const [lat, lon] = selectedRegion.coordinates;
+                    loadCoordinateData(lat, lon, v.id);
+                  } else if (!selectedRegion.id.startsWith('csv_')) {
+                    liveQueryIdRef.current++;
+                    setCustomPoints(null);
+                    setIsLiveNasa(false);
+                  }
                 }}
                 recommendedVariableId={selectedRegion.primaryVariable}
               />

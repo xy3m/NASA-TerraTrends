@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { EarthVariable, HotspotRegion, TimeSeriesPoint, TrendAnalysisResult, VariableId } from '../types/earthScience';
-import { EARTH_VARIABLES, fetchLiveNasaPowerData, parseCustomCsv } from '../services/nasaData';
+import { EARTH_VARIABLES, NASA_POWER_PARAM_MAP, fetchLiveNasaPowerData, parseCustomCsv } from '../services/nasaData';
 import { analyzeTrend, processTimeSeries } from '../services/statistics';
 import { TimeSeriesChart } from './TimeSeriesChart';
 import { StatsSummaryCard } from './StatsSummaryCard';
@@ -95,7 +95,7 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
     setApiFeedback(null);
 
     try {
-      const { points, isLiveNasa } = await fetchLiveNasaPowerData(lat, lon, selectedVarId);
+      const { points, isLiveNasa, statusMessage } = await fetchLiveNasaPowerData(lat, lon, selectedVarId);
       const targetVar = EARTH_VARIABLES.find(v => v.id === selectedVarId) || EARTH_VARIABLES[0];
 
       const customRegion: HotspotRegion = {
@@ -110,7 +110,7 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
       };
 
       onAnalyzeCustomData(customRegion, targetVar, points, isLiveNasa);
-      setApiFeedback(isLiveNasa ? 'Successfully retrieved live NASA POWER data!' : 'Loaded calibrated Earth science model data for this location.');
+      setApiFeedback(statusMessage);
     } catch (err: any) {
       setApiFeedback(`Error retrieving NASA data: ${err.message || err}`);
     } finally {
@@ -287,11 +287,14 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
                 onChange={(e) => setSelectedVarId(e.target.value as VariableId)}
                 className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-semibold text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
               >
-                {EARTH_VARIABLES.map(v => (
-                  <option key={v.id} value={v.id}>
-                    {v.shortName} ({v.unit})
-                  </option>
-                ))}
+                {EARTH_VARIABLES.map(v => {
+                  const powerCode = NASA_POWER_PARAM_MAP[v.id];
+                  return (
+                    <option key={v.id} value={v.id}>
+                      {v.shortName} ({v.unit}) — {powerCode ? `Live NASA POWER: ${powerCode}` : 'Calibrated Fallback'}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>
