@@ -51,22 +51,25 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({ onSelectLayer, onOpaci
   };
 
   return (
-    <div className="bg-[#071326]/90 backdrop-blur border border-[#3EC7F2]/20 rounded-xl p-3 text-xs space-y-2 max-w-xs shadow-xl">
-      <div className="flex items-center justify-between">
+    <div className="bg-[#071326]/90 backdrop-blur border border-[#3EC7F2]/20 hover:border-[#3EC7F2]/40 rounded-xl p-3 text-xs space-y-2 max-w-xs shadow-xl transition-colors">
+      <button
+        type="button"
+        onClick={handleToggle}
+        className="w-full flex items-center justify-between gap-2 text-left cursor-pointer"
+        title={isEnabled ? 'Disable GIBS Overlay' : 'Enable GIBS Overlay'}
+      >
         <div className="flex items-center space-x-1.5 font-bold text-white">
           <Layers className="w-4 h-4 text-[#3EC7F2]" />
           <span>NASA GIBS Satellite Tiles</span>
         </div>
-        <button
-          onClick={handleToggle}
+        <span
           className={`p-1 rounded-md text-xs transition-colors ${
             isEnabled ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-slate-800 text-slate-400'
           }`}
-          title={isEnabled ? 'Disable GIBS Overlay' : 'Enable GIBS Overlay'}
         >
           {isEnabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-        </button>
-      </div>
+        </span>
+      </button>
 
       {isEnabled && (
         <div className="space-y-2 pt-1">

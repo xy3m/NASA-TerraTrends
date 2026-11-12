@@ -57,6 +57,7 @@ export const App: React.FC = () => {
   const liveQueryIdRef = useRef<number>(0);
   const section1Ref = useRef<HTMLElement | null>(null);
   const section2Ref = useRef<HTMLElement | null>(null);
+  const section3Ref = useRef<HTMLElement | null>(null);
   const scrollTargetRef = useRef<'section1' | 'section2' | null>(null);
 
   // Export Modal state
@@ -338,13 +339,16 @@ export const App: React.FC = () => {
                       loadCoordinateData(lat, lon, v.id);
                     }
                   }
+                  requestAnimationFrame(() => {
+                    section3Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  });
                 }}
                 recommendedVariableId={selectedRegion.primaryVariable}
               />
             </section>
 
             {/* Section 3: Time Series Visualization */}
-            <section className="space-y-3">
+            <section ref={section3Ref} className="space-y-3 scroll-mt-24">
               <div>
                 <h2 className="text-lg font-bold text-white flex items-center space-x-2">
                   <Database className="w-5 h-5 text-indigo-400" />
