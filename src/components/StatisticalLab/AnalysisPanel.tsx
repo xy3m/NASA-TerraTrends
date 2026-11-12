@@ -10,7 +10,8 @@ export type AnalysisCategory =
   | 'regression'
   | 'pca'
   | 'trend'
-  | 'changepoint';
+  | 'changepoint'
+  | 'fdr';
 
 export interface AnalysisConfig {
   type: AnalysisCategory;
@@ -18,6 +19,7 @@ export interface AnalysisConfig {
   secondaryCols: string[];
   alpha: number;
   bootstrapIter: number;
+  bootstrapStat: 'mean' | 'median';
   seasonLength: number;
   regressionMethod: 'ols' | 'robust';
   trendMethod: 'standard' | 'hamed_rao' | 'tfpw';
@@ -42,6 +44,8 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     numericCols.length > 1 ? [numericCols[1].name] : []
   );
   const [alpha, setAlpha] = useState<number>(0.05);
+  const [bootstrapIter, setBootstrapIter] = useState<number>(2000);
+  const [bootstrapStat, setBootstrapStat] = useState<'mean' | 'median'>('mean');
   const [seasonLength, setSeasonLength] = useState<number>(12);
   const [regressionMethod, setRegressionMethod] = useState<'ols' | 'robust'>('ols');
   const [trendMethod, setTrendMethod] = useState<'standard' | 'hamed_rao' | 'tfpw'>('standard');
@@ -95,6 +99,12 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       icon: <Sliders className="w-4 h-4 text-orange-400" />,
       desc: 'Pettitt non-parametric and CUSUM shift detection',
     },
+    {
+      id: 'fdr',
+      label: 'Multiple-Testing (FDR)',
+      icon: <CheckCircle className="w-4 h-4 text-teal-400" />,
+      desc: 'Benjamini-Hochberg FDR, Holm & Bonferroni trend adjustments',
+    },
   ];
 
   const handleToggleSecondary = (name: string) => {
@@ -111,7 +121,8 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       primaryCol,
       secondaryCols,
       alpha,
-      bootstrapIter: 2000,
+      bootstrapIter,
+      bootstrapStat,
       seasonLength,
       regressionMethod,
       trendMethod,
@@ -175,7 +186,8 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           selectedType === 'ttest' ||
           selectedType === 'anova' ||
           selectedType === 'regression' ||
-          selectedType === 'pca') && (
+          selectedType === 'pca' ||
+          selectedType === 'fdr') && (
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-300 block">
               {selectedType === 'regression'
@@ -227,8 +239,41 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           </select>
         </div>
 
-        {/* Trend options */}
-        {selectedType === 'trend' && (
+        {/* Descriptive / Bootstrap options */}
+        {selectedType === 'descriptive' && (
+          <>
+            <div>
+              <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">
+                Bootstrap Statistic
+              </label>
+              <select
+                value={bootstrapStat}
+                onChange={e => setBootstrapStat(e.target.value as 'mean' | 'median')}
+                className="w-full bg-[#030915] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+              >
+                <option value="mean">Mean (Bootstrap CI)</option>
+                <option value="median">Median (Bootstrap CI)</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">
+                Bootstrap Iterations (B)
+              </label>
+              <select
+                value={bootstrapIter}
+                onChange={e => setBootstrapIter(parseInt(e.target.value, 10))}
+                className="w-full bg-[#030915] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono"
+              >
+                <option value={1000}>1,000 resamples</option>
+                <option value={2000}>2,000 resamples</option>
+                <option value={5000}>5,000 resamples</option>
+              </select>
+            </div>
+          </>
+        )}
+
+        {/* Trend & FDR options */}
+        {(selectedType === 'trend' || selectedType === 'fdr') && (
           <>
             <div>
               <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">

@@ -35,16 +35,37 @@ export const EarthMap: React.FC<EarthMapProps> = ({
 
   const tileLayerRef = useRef<L.Layer | null>(null);
   const gibsLayerRef = useRef<L.TileLayer | null>(null);
+  const gibsOpacityRef = useRef<number>(0.75);
 
-  const handleGIBSLayerSelect = (tileUrl: string | null) => {
+  const handleGIBSLayerSelect = (
+    tileUrl: string | null,
+    _layerName?: string,
+    opacity?: number,
+    maxNativeZoom?: number
+  ) => {
+    if (opacity !== undefined) {
+      gibsOpacityRef.current = opacity;
+    }
     if (gibsLayerRef.current && mapInstanceRef.current) {
       mapInstanceRef.current.removeLayer(gibsLayerRef.current);
       gibsLayerRef.current = null;
     }
     if (tileUrl && mapInstanceRef.current) {
-      gibsLayerRef.current = L.tileLayer(tileUrl, { maxZoom: 9, zIndex: 10, opacity: 0.75 });
+      gibsLayerRef.current = L.tileLayer(tileUrl, {
+        maxNativeZoom: maxNativeZoom ?? 7,
+        maxZoom: 16,
+        zIndex: 10,
+        opacity: gibsOpacityRef.current,
+        noWrap: true,
+        bounds: [[-85.05112878, -180], [85.05112878, 180]],
+      });
       gibsLayerRef.current.addTo(mapInstanceRef.current);
     }
+  };
+
+  const handleGIBSOpacityChange = (nextOpacity: number) => {
+    gibsOpacityRef.current = nextOpacity;
+    gibsLayerRef.current?.setOpacity(nextOpacity);
   };
 
   const createBaseLayer = (layerKey: 'dark' | 'satellite' | 'streets'): L.Layer => {
@@ -253,7 +274,7 @@ export const EarthMap: React.FC<EarthMapProps> = ({
 
       {/* GIBS Satellite Overlay Floating Controller (Top Right) */}
       <div className="absolute top-3 right-3 z-10 hidden sm:block">
-        <GIBSOverlay onSelectLayer={handleGIBSLayerSelect} />
+        <GIBSOverlay onSelectLayer={handleGIBSLayerSelect} onOpacityChange={handleGIBSOpacityChange} />
       </div>
 
       {/* Selected Region Status Pill (Bottom Left) */}

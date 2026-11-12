@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { EARTH_VARIABLES } from '../services/nasaData';
 import { EarthVariable } from '../types/earthScience';
+import {
+  searchCollections,
+  searchGranules,
+  CMRCollection,
+  CMRGranule,
+} from '../services/connectors/cmrConnector';
 import { 
   BookOpen, 
   Satellite, 
@@ -14,7 +20,9 @@ import {
   Sun, 
   ShieldAlert, 
   Search,
-  ExternalLink
+  ExternalLink,
+  Database,
+  Loader2
 } from 'lucide-react';
 
 interface MissionInfo {
@@ -126,8 +134,41 @@ const NASA_MISSIONS: MissionInfo[] = [
 ];
 
 export const VariableEncyclopedia: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'variables' | 'missions'>('variables');
+  const [activeTab, setActiveTab] = useState<'variables' | 'missions' | 'cmr'>('variables');
   const [filterText, setFilterText] = useState<string>('');
+  const [cmrQuery, setCmrQuery] = useState<string>('MODIS NDVI');
+  const [cmrCollections, setCmrCollections] = useState<CMRCollection[]>([]);
+  const [cmrLoading, setCmrLoading] = useState<boolean>(false);
+  const [cmrSearched, setCmrSearched] = useState<boolean>(false);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [granules, setGranules] = useState<CMRGranule[]>([]);
+  const [granulesLoading, setGranulesLoading] = useState<boolean>(false);
+
+  const handleCmrSearch = async (keywordOverride?: string) => {
+    const q = (keywordOverride ?? cmrQuery).trim();
+    if (!q) return;
+    setCmrQuery(q);
+    setCmrLoading(true);
+    setCmrSearched(true);
+    setSelectedCollectionId(null);
+    setGranules([]);
+    const results = await searchCollections(q, 10);
+    setCmrCollections(results);
+    setCmrLoading(false);
+  };
+
+  const handleSelectCollection = async (collectionId: string) => {
+    if (selectedCollectionId === collectionId) {
+      setSelectedCollectionId(null);
+      setGranules([]);
+      return;
+    }
+    setSelectedCollectionId(collectionId);
+    setGranulesLoading(true);
+    const items = await searchGranules(collectionId, undefined, 6);
+    setGranules(items);
+    setGranulesLoading(false);
+  };
 
   const getVariableIcon = (id: string) => {
     switch (id) {
@@ -201,20 +242,34 @@ export const VariableEncyclopedia: React.FC = () => {
             <Satellite className="w-3.5 h-3.5" />
             <span>Missions & Models ({NASA_MISSIONS.length})</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('cmr')}
+            className={`flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              activeTab === 'cmr'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>CMR Catalog</span>
+          </button>
         </div>
       </div>
 
-      {/* Search Input */}
-      <div className="relative max-w-md">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-        <input
-          type="text"
-          placeholder={activeTab === 'variables' ? 'Search variables, categories, units...' : 'Search missions, sensors, models...'}
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
-        />
-      </div>
+      {/* Search Input (for local Variables & Missions) */}
+      {activeTab !== 'cmr' && (
+        <div className="relative max-w-md">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+          <input
+            type="text"
+            placeholder={activeTab === 'variables' ? 'Search variables, categories, units...' : 'Search missions, sensors, models...'}
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+          />
+        </div>
+      )}
 
       {/* TAB 1: VARIABLES DIRECTORY */}
       {activeTab === 'variables' && (
@@ -329,6 +384,136 @@ export const VariableEncyclopedia: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* TAB 3: LIVE NASA CMR CATALOG SEARCH */}
+      {activeTab === 'cmr' && (
+        <div className="space-y-4">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-3">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
+                <input
+                  type="text"
+                  value={cmrQuery}
+                  onChange={e => setCmrQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleCmrSearch()}
+                  placeholder="Query NASA Common Metadata Repository (e.g., MODIS, SMAP, GPM, AIRS, MERRA-2)..."
+                  className="w-full pl-9 pr-4 py-2 bg-[#030915] border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-400"
+                />
+              </div>
+              <button
+                onClick={() => handleCmrSearch()}
+                disabled={cmrLoading}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center space-x-1.5"
+              >
+                {cmrLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                <span>{cmrLoading ? 'Searching CMR...' : 'Search NASA CMR'}</span>
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="text-slate-400 mr-1">Quick queries:</span>
+              {['MODIS NDVI', 'SMAP soil moisture', 'GPM IMERG', 'AIRS temperature', 'MERRA-2'].map(preset => (
+                <button
+                  key={preset}
+                  onClick={() => handleCmrSearch(preset)}
+                  className="px-2.5 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700"
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {cmrSearched && !cmrLoading && cmrCollections.length === 0 && (
+            <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-6 text-center text-xs text-slate-400">
+              No collections returned for "{cmrQuery}". Try another NASA mission or variable keyword.
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {cmrCollections.map(col => {
+              const isExpanded = selectedCollectionId === col.id;
+              return (
+                <div
+                  key={col.id}
+                  className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-2.5"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-sm font-bold text-white">{col.title}</h4>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-400 mt-0.5">
+                        <span className="text-emerald-400">{col.id}</span>
+                        {col.dataCenter && <span>• {col.dataCenter}</span>}
+                        {col.platforms.length > 0 && <span>• Platforms: {col.platforms.join(', ')}</span>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleSelectCollection(col.id)}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700 shrink-0"
+                    >
+                      {isExpanded ? 'Hide Granules' : 'Inspect Granules'}
+                    </button>
+                  </div>
+
+                  {col.summary && (
+                    <p className="text-xs text-slate-300 line-clamp-2">{col.summary}</p>
+                  )}
+
+                  {(col.timeStart || col.timeEnd) && (
+                    <div className="text-[11px] font-mono text-slate-400">
+                      Temporal Coverage: {col.timeStart?.slice(0, 10) || '?'} → {col.timeEnd?.slice(0, 10) || 'Present'}
+                    </div>
+                  )}
+
+                  {isExpanded && (
+                    <div className="pt-3 border-t border-slate-800 space-y-2">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">
+                        Recent CMR Granules
+                      </div>
+                      {granulesLoading ? (
+                        <div className="flex items-center space-x-2 text-xs text-slate-400 py-2">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Querying granules for {col.id}...</span>
+                        </div>
+                      ) : granules.length === 0 ? (
+                        <div className="text-xs text-slate-500">No recent public granules listed.</div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {granules.map(g => (
+                            <div
+                              key={g.id}
+                              className="bg-[#030915] border border-slate-800 rounded-xl p-2.5 text-[11px] font-mono space-y-1"
+                            >
+                              <div className="text-white font-semibold truncate" title={g.title}>
+                                {g.title}
+                              </div>
+                              <div className="text-slate-400">
+                                {g.timeStart.slice(0, 10)} → {g.timeEnd.slice(0, 10)}
+                              </div>
+                              {g.downloadLinks[0] && (
+                                <a
+                                  href={g.downloadLinks[0]}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center space-x-1 text-emerald-400 hover:text-emerald-300 underline"
+                                >
+                                  <span>Granule Link</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

@@ -14,7 +14,7 @@ export * from './fdr';
 // ── Backward compatibility exports for existing codebase ─────────────
 
 import { TimeSeriesPoint, TrendAnalysisResult, VariableId } from '../../types/earthScience';
-import { normalPValue, tCDF } from './distributions';
+import { normalPValue, tCDF, tQuantile } from './distributions';
 
 /**
  * Calculate Deseasonalized Anomalies and 12-Month Moving Averages
@@ -217,7 +217,8 @@ export function analyzeTrend(
 
   const mk = calculateMannKendall(points, useAnomaly);
 
-  const tCritical = 1.96;
+  const rawTCrit = tQuantile(0.975, df);
+  const tCritical = isFinite(rawTCrit) ? rawTCrit : 1.96;
   for (let i = 0; i < n; i++) {
     const t = times[i];
     const trendVal = olsSlope * t + olsIntercept;

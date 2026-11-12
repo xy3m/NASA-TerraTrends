@@ -6,9 +6,11 @@ import { DiagnosticsPanel } from './DiagnosticsPanel';
 import {
   computeDescriptiveStats,
   computeCorrelation,
+  crossCorrelationFunction,
   oneSampleTTest,
   twoSampleTTest,
   oneWayAnova,
+  bootstrapCI,
   multipleOLS,
   robustIRLS,
   pcaAnalysis,
@@ -17,8 +19,14 @@ import {
   trendAcceleration,
   pettittChangePoint,
   cusumChangePoint,
+  shannonEntropy,
+  sampleEntropy,
+  benjaminiHochberg,
+  bonferroniCorrection,
+  holmCorrection,
   runDiagnostics,
 } from '../../services/statistics';
+import { runStatsWorkerTask } from '../../workers/statsWorkerClient';
 import {
   DescriptiveStats,
   CorrelationResult,
@@ -28,8 +36,43 @@ import {
   SeasonalMKResult,
   DiagnosticResults,
 } from '../../types/earthScience';
-import { TTestResult, AnovaResult } from '../../services/statistics/inferential';
-import { FlaskConical, Database, LineChart, ShieldCheck, Sparkles } from 'lucide-react';
+import { TTestResult, AnovaResult, BootstrapResult } from '../../services/statistics/inferential';
+import { MultipleTestingResult } from '../../services/statistics/fdr';
+import { FlaskConical, Database, LineChart, ShieldCheck } from 'lucide-react';
+
+export interface LabResultsBundle {
+  descriptive?: DescriptiveStats;
+  bootstrap?: BootstrapResult & { statLabel: 'mean' | 'median' };
+  entropy?: { shannon: number; sample: number };
+  correlation?: CorrelationResult;
+  correlationMatrix?: { matrix: number[][]; labels: string[] };
+  crossCorrelation?: { lags: number[]; values: number[]; pairLabel: string };
+  correlationFDR?: {
+    pairs: string[];
+    rawPValues: number[];
+    bh: MultipleTestingResult;
+    holm: MultipleTestingResult;
+    bonferroni: MultipleTestingResult;
+  };
+  ttest?: TTestResult;
+  anova?: AnovaResult;
+  regression?: RegressionResult;
+  pca?: PCAResult;
+  trend?: SeasonalMKResult & { slope: number; acceleration?: number; isAccelerating?: boolean };
+  changePoint?: ChangePointResult;
+  cusumChangePoint?: ChangePointResult;
+  fdr?: {
+    items: { name: string; tau: number; z: number; rawP: number }[];
+    bh: MultipleTestingResult;
+    holm: MultipleTestingResult;
+    bonferroni: MultipleTestingResult;
+  };
+  executionMeta?: {
+    viaWorker: boolean;
+    durationMs: number;
+    tasks: string[];
+  };
+}
 
 export const StatisticalLab: React.FC = () => {
   const [columns, setColumns] = useState<DataColumn[]>([]);
@@ -37,17 +80,7 @@ export const StatisticalLab: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'data' | 'analysis' | 'diagnostics'>('data');
 
   const [lastConfig, setLastConfig] = useState<AnalysisConfig | null>(null);
-  const [analysisResults, setAnalysisResults] = useState<{
-    descriptive?: DescriptiveStats;
-    correlation?: CorrelationResult;
-    correlationMatrix?: { matrix: number[][]; labels: string[] };
-    ttest?: TTestResult;
-    anova?: AnovaResult;
-    regression?: RegressionResult;
-    pca?: PCAResult;
-    trend?: SeasonalMKResult & { slope: number; acceleration?: number };
-    changePoint?: ChangePointResult;
-  }>({});
+  const [analysisResults, setAnalysisResults] = useState<LabResultsBundle>({});
   const [diagnosticsResult, setDiagnosticsResult] = useState<DiagnosticResults | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
@@ -57,138 +90,275 @@ export const StatisticalLab: React.FC = () => {
     setActiveTab('analysis'); // Auto switch to analysis
   };
 
-  const handleRunAnalysis = (config: AnalysisConfig) => {
+  const handleRunAnalysis = async (config: AnalysisConfig) => {
     setIsRunning(true);
     setLastConfig(config);
 
-    setTimeout(() => {
-      try {
-        const primaryCol = columns.find(c => c.name === config.primaryCol);
-        if (!primaryCol) return;
+    try {
+      const primaryCol = columns.find(c => c.name === config.primaryCol);
+      if (!primaryCol) return;
 
-        const primaryVals = primaryCol.values;
-        const newResults: typeof analysisResults = {};
+      const primaryVals = primaryCol.values;
+      const newResults: LabResultsBundle = {};
+      let workerUsed = false;
+      let totalWorkerMs = 0;
+      const workerTasks: string[] = [];
 
-        // 1. Descriptive
-        if (config.type === 'descriptive') {
-          newResults.descriptive = computeDescriptiveStats(primaryVals);
-          setDiagnosticsResult(runDiagnostics(primaryVals));
+      const medianFn = (arr: number[]) => {
+        const s = [...arr].sort((a, b) => a - b);
+        const m = Math.floor(s.length / 2);
+        return s.length % 2 === 0 ? (s[m - 1] + s[m]) / 2 : s[m];
+      };
+
+      // 1. Descriptive (offloaded via statsWorker: descriptive + bootstrap) + Entropy
+      if (config.type === 'descriptive') {
+        const [descExec, bootExec] = await Promise.all([
+          runStatsWorkerTask<DescriptiveStats>(
+            'descriptive',
+            { values: primaryVals },
+            () => computeDescriptiveStats(primaryVals)
+          ),
+          runStatsWorkerTask<BootstrapResult>(
+            'bootstrap',
+            {
+              values: primaryVals,
+              statFn: config.bootstrapStat,
+              B: config.bootstrapIter,
+              alpha: config.alpha,
+            },
+            () =>
+              bootstrapCI(
+                primaryVals,
+                config.bootstrapStat === 'median' ? medianFn : undefined,
+                config.bootstrapIter,
+                config.alpha
+              )
+          ),
+        ]);
+
+        workerUsed = descExec.viaWorker || bootExec.viaWorker;
+        totalWorkerMs = descExec.durationMs + bootExec.durationMs;
+        workerTasks.push('descriptive', `bootstrap(B=${config.bootstrapIter})`);
+
+        newResults.descriptive = descExec.result;
+        newResults.bootstrap = { ...bootExec.result, statLabel: config.bootstrapStat };
+        newResults.entropy = {
+          shannon: shannonEntropy(primaryVals),
+          sample: sampleEntropy(primaryVals),
+        };
+        setDiagnosticsResult(runDiagnostics(primaryVals));
+      }
+
+      // 2. Correlation + Cross-Correlation Function + Pairwise FDR
+      else if (config.type === 'correlation') {
+        const secondaryCols = columns.filter(c => config.secondaryCols.includes(c.name));
+        if (secondaryCols.length > 0) {
+          newResults.correlation = computeCorrelation(primaryVals, secondaryCols[0].values);
+          const minLen = Math.min(primaryVals.length, secondaryCols[0].values.length);
+          const maxLag = Math.min(12, Math.max(1, Math.floor(minLen / 3)));
+          const ccfVals = crossCorrelationFunction(primaryVals, secondaryCols[0].values, maxLag);
+          const lags = Array.from({ length: 2 * maxLag + 1 }, (_, i) => i - maxLag);
+          newResults.crossCorrelation = {
+            lags,
+            values: ccfVals,
+            pairLabel: `${primaryCol.name} vs ${secondaryCols[0].name}`,
+          };
         }
 
-        // 2. Correlation
-        else if (config.type === 'correlation') {
-          const secondaryCols = columns.filter(c => config.secondaryCols.includes(c.name));
-          if (secondaryCols.length > 0) {
-            newResults.correlation = computeCorrelation(primaryVals, secondaryCols[0].values);
-          }
+        // Full correlation matrix + pairwise p-values for multiple-testing correction
+        const allCols = [primaryCol, ...secondaryCols];
+        const matrix: number[][] = [];
+        const pairLabels: string[] = [];
+        const rawPValues: number[] = [];
 
-          // Full correlation matrix
-          const allCols = [primaryCol, ...secondaryCols];
-          const matrix: number[][] = [];
-          for (let i = 0; i < allCols.length; i++) {
-            const row: number[] = [];
-            for (let j = 0; j < allCols.length; j++) {
-              if (i === j) {
-                row.push(1.0);
-              } else {
-                const corr = computeCorrelation(allCols[i].values, allCols[j].values);
-                row.push(corr.pearsonR);
+        for (let i = 0; i < allCols.length; i++) {
+          const row: number[] = [];
+          for (let j = 0; j < allCols.length; j++) {
+            if (i === j) {
+              row.push(1.0);
+            } else {
+              const corr = computeCorrelation(allCols[i].values, allCols[j].values);
+              row.push(corr.pearsonR);
+              if (j > i) {
+                pairLabels.push(`${allCols[i].name} × ${allCols[j].name}`);
+                rawPValues.push(corr.pearsonP);
               }
             }
+          }
+          matrix.push(row);
+        }
+        newResults.correlationMatrix = { matrix, labels: allCols.map(c => c.name) };
+        if (rawPValues.length >= 2) {
+          newResults.correlationFDR = {
+            pairs: pairLabels,
+            rawPValues,
+            bh: benjaminiHochberg(rawPValues, config.alpha),
+            holm: holmCorrection(rawPValues, config.alpha),
+            bonferroni: bonferroniCorrection(rawPValues, config.alpha),
+          };
+        }
+        setDiagnosticsResult(runDiagnostics(primaryVals));
+      }
+
+      // 3. t-Test
+      else if (config.type === 'ttest') {
+        const secondCol = columns.find(c => config.secondaryCols[0] === c.name);
+        if (secondCol) {
+          newResults.ttest = twoSampleTTest(primaryVals, secondCol.values, false, config.alpha);
+        } else {
+          newResults.ttest = oneSampleTTest(primaryVals, 0, config.alpha);
+        }
+        setDiagnosticsResult(runDiagnostics(primaryVals));
+      }
+
+      // 4. ANOVA
+      else if (config.type === 'anova') {
+        const allGroups = [
+          primaryVals,
+          ...columns.filter(c => config.secondaryCols.includes(c.name)).map(c => c.values),
+        ];
+        newResults.anova = oneWayAnova(allGroups);
+        setDiagnosticsResult(runDiagnostics(primaryVals));
+      }
+
+      // 5. Multiple Regression
+      else if (config.type === 'regression') {
+        const predCols = columns.filter(c => config.secondaryCols.includes(c.name));
+        if (predCols.length > 0) {
+          const n = primaryVals.length;
+          const X: number[][] = [];
+          const y: number[] = [];
+
+          for (let i = 0; i < n; i++) {
+            const row = predCols.map(c => c.values[i]);
+            if (!row.some(isNaN) && !isNaN(primaryVals[i])) {
+              X.push(row);
+              y.push(primaryVals[i]);
+            }
+          }
+
+          if (config.regressionMethod === 'robust') {
+            newResults.regression = robustIRLS(X, y);
+          } else {
+            newResults.regression = multipleOLS(X, y);
+          }
+
+          setDiagnosticsResult(runDiagnostics(y, newResults.regression.residuals, X));
+        }
+      }
+
+      // 6. PCA (offloaded via statsWorker)
+      else if (config.type === 'pca') {
+        const pcaCols = [primaryCol, ...columns.filter(c => config.secondaryCols.includes(c.name))];
+        const n = primaryVals.length;
+        const matrix: number[][] = [];
+        for (let i = 0; i < n; i++) {
+          const row = pcaCols.map(c => c.values[i]);
+          if (!row.some(isNaN)) {
             matrix.push(row);
           }
-          newResults.correlationMatrix = { matrix, labels: allCols.map(c => c.name) };
-          setDiagnosticsResult(runDiagnostics(primaryVals));
         }
-
-        // 3. t-Test
-        else if (config.type === 'ttest') {
-          const secondCol = columns.find(c => config.secondaryCols[0] === c.name);
-          if (secondCol) {
-            newResults.ttest = twoSampleTTest(primaryVals, secondCol.values, false, config.alpha);
-          } else {
-            newResults.ttest = oneSampleTTest(primaryVals, 0, config.alpha);
-          }
-          setDiagnosticsResult(runDiagnostics(primaryVals));
-        }
-
-        // 4. ANOVA
-        else if (config.type === 'anova') {
-          const allGroups = [
-            primaryVals,
-            ...columns.filter(c => config.secondaryCols.includes(c.name)).map(c => c.values),
-          ];
-          newResults.anova = oneWayAnova(allGroups);
-          setDiagnosticsResult(runDiagnostics(primaryVals));
-        }
-
-        // 5. Multiple Regression
-        else if (config.type === 'regression') {
-          const predCols = columns.filter(c => config.secondaryCols.includes(c.name));
-          if (predCols.length > 0) {
-            const n = primaryVals.length;
-            const X: number[][] = [];
-            const y: number[] = [];
-
-            for (let i = 0; i < n; i++) {
-              const row = predCols.map(c => c.values[i]);
-              if (!row.some(isNaN) && !isNaN(primaryVals[i])) {
-                X.push(row);
-                y.push(primaryVals[i]);
-              }
-            }
-
-            if (config.regressionMethod === 'robust') {
-              newResults.regression = robustIRLS(X, y);
-            } else {
-              newResults.regression = multipleOLS(X, y);
-            }
-
-            setDiagnosticsResult(runDiagnostics(y, newResults.regression.residuals, X));
-          }
-        }
-
-        // 6. PCA
-        else if (config.type === 'pca') {
-          const pcaCols = [primaryCol, ...columns.filter(c => config.secondaryCols.includes(c.name))];
-          const n = primaryVals.length;
-          const matrix: number[][] = [];
-          for (let i = 0; i < n; i++) {
-            const row = pcaCols.map(c => c.values[i]);
-            if (!row.some(isNaN)) {
-              matrix.push(row);
-            }
-          }
-          newResults.pca = pcaAnalysis(matrix, pcaCols.map(c => c.name));
-          setDiagnosticsResult(runDiagnostics(primaryVals));
-        }
-
-        // 7. Trend
-        else if (config.type === 'trend') {
-          const mkRes = seasonalMannKendall(primaryVals, config.seasonLength, config.trendMethod);
-          const slope = senSlopeExact(primaryVals);
-          const accel = trendAcceleration(primaryVals);
-          newResults.trend = {
-            ...mkRes,
-            slope,
-            acceleration: accel.acceleration,
-          };
-          setDiagnosticsResult(runDiagnostics(primaryVals));
-        }
-
-        // 8. Change-Point
-        else if (config.type === 'changepoint') {
-          newResults.changePoint = pettittChangePoint(primaryVals);
-          setDiagnosticsResult(runDiagnostics(primaryVals));
-        }
-
-        setAnalysisResults(newResults);
-      } catch (err) {
-        console.error('Analysis error:', err);
-      } finally {
-        setIsRunning(false);
+        const labels = pcaCols.map(c => c.name);
+        const pcaExec = await runStatsWorkerTask<PCAResult>(
+          'pca',
+          { dataMatrix: matrix, labels },
+          () => pcaAnalysis(matrix, labels)
+        );
+        workerUsed = pcaExec.viaWorker;
+        totalWorkerMs = pcaExec.durationMs;
+        workerTasks.push('pca');
+        newResults.pca = pcaExec.result;
+        setDiagnosticsResult(runDiagnostics(primaryVals));
       }
-    }, 150);
+
+      // 7. Trend (offloaded via statsWorker: seasonalMK + theilSenFull) + Acceleration & Entropy
+      else if (config.type === 'trend') {
+        const times = primaryVals.map((_, i) => i);
+        const [mkExec, slopeExec] = await Promise.all([
+          runStatsWorkerTask<SeasonalMKResult>(
+            'seasonalMK',
+            {
+              values: primaryVals,
+              seasonLength: config.seasonLength,
+              method: config.trendMethod,
+            },
+            () => seasonalMannKendall(primaryVals, config.seasonLength, config.trendMethod)
+          ),
+          runStatsWorkerTask<number>(
+            'theilSenFull',
+            { times, values: primaryVals },
+            () => senSlopeExact(primaryVals)
+          ),
+        ]);
+
+        workerUsed = mkExec.viaWorker || slopeExec.viaWorker;
+        totalWorkerMs = mkExec.durationMs + slopeExec.durationMs;
+        workerTasks.push('seasonalMK', 'theilSenFull');
+
+        const accel = trendAcceleration(primaryVals);
+        newResults.trend = {
+          ...mkExec.result,
+          slope: slopeExec.result,
+          acceleration: accel.acceleration,
+          isAccelerating: accel.isAccelerating,
+        };
+        newResults.entropy = {
+          shannon: shannonEntropy(primaryVals),
+          sample: sampleEntropy(primaryVals),
+        };
+        setDiagnosticsResult(runDiagnostics(primaryVals));
+      }
+
+      // 8. Change-Point (Pettitt via statsWorker + CUSUM comparison)
+      else if (config.type === 'changepoint') {
+        const pettittExec = await runStatsWorkerTask<ChangePointResult>(
+          'pettitt',
+          { values: primaryVals },
+          () => pettittChangePoint(primaryVals)
+        );
+        workerUsed = pettittExec.viaWorker;
+        totalWorkerMs = pettittExec.durationMs;
+        workerTasks.push('pettitt');
+
+        newResults.changePoint = pettittExec.result;
+        newResults.cusumChangePoint = cusumChangePoint(primaryVals);
+        setDiagnosticsResult(runDiagnostics(primaryVals));
+      }
+
+      // 9. Multiple-Testing Correction (FDR: BH, Holm, Bonferroni across selected columns)
+      else if (config.type === 'fdr') {
+        const targetCols = [
+          primaryCol,
+          ...columns.filter(c => c.type === 'numeric' && config.secondaryCols.includes(c.name)),
+        ];
+        const items = targetCols.map(col => {
+          const mk = seasonalMannKendall(col.values, config.seasonLength, config.trendMethod);
+          return { name: col.name, tau: mk.tau, z: mk.z, rawP: mk.pValue };
+        });
+        const rawPValues = items.map(item => item.rawP);
+        newResults.fdr = {
+          items,
+          bh: benjaminiHochberg(rawPValues, config.alpha),
+          holm: holmCorrection(rawPValues, config.alpha),
+          bonferroni: bonferroniCorrection(rawPValues, config.alpha),
+        };
+        setDiagnosticsResult(runDiagnostics(primaryVals));
+      }
+
+      if (workerUsed) {
+        newResults.executionMeta = {
+          viaWorker: true,
+          durationMs: totalWorkerMs,
+          tasks: workerTasks,
+        };
+      }
+
+      setAnalysisResults(newResults);
+    } catch (err) {
+      console.error('Analysis error:', err);
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   const primaryColObj = columns.find(c => c.name === lastConfig?.primaryCol);

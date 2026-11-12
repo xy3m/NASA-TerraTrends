@@ -1,6 +1,6 @@
 /**
  * NASA GIBS Connector — WMTS tile overlay manager for satellite imagery layers
- * Implements EarthDataConnector for map tile access (not time series)
+ * Uses Web Mercator (EPSG:3857) GoogleMapsCompatible tile matrices to match Leaflet natively.
  */
 import type {
   EarthDataConnector,
@@ -10,7 +10,7 @@ import type {
   VariableId,
 } from './types';
 
-const BASE_URL = 'https://gibs.earthdata.nasa.gov/wmts/epsg4326/best';
+const BASE_URL = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
 
 // ── GIBS Layer definitions ────────────────────────────────────────────
 
@@ -19,6 +19,9 @@ export interface GIBSLayer {
   name: string;
   description: string;
   defaultDate: string;
+  tileMatrixSet: string;
+  format: 'jpeg' | 'png';
+  maxZoom: number;
 }
 
 export const GIBS_LAYERS: GIBSLayer[] = [
@@ -27,50 +30,72 @@ export const GIBS_LAYERS: GIBSLayer[] = [
     name: 'MODIS Terra True Color',
     description: 'Corrected reflectance true-color imagery from the MODIS instrument on NASA Terra satellite. Daily global coverage at 250m resolution.',
     defaultDate: '2024-01-15',
+    tileMatrixSet: 'GoogleMapsCompatible_Level9',
+    format: 'jpeg',
+    maxZoom: 9,
+  },
+  {
+    id: 'VIIRS_NOAA20_CorrectedReflectance_TrueColor',
+    name: 'VIIRS NOAA-20 True Color',
+    description: 'Corrected reflectance true-color imagery from the VIIRS instrument on NOAA-20 satellite.',
+    defaultDate: '2024-01-15',
+    tileMatrixSet: 'GoogleMapsCompatible_Level9',
+    format: 'jpeg',
+    maxZoom: 9,
   },
   {
     id: 'MODIS_Terra_NDVI_8Day',
     name: 'MODIS Terra NDVI (8-Day)',
     description: '8-day composite Normalized Difference Vegetation Index from MODIS Terra. Shows vegetation greenness and health globally.',
     defaultDate: '2024-01-01',
+    tileMatrixSet: 'GoogleMapsCompatible_Level9',
+    format: 'png',
+    maxZoom: 9,
   },
   {
-    id: 'VIIRS_SNPP_CorrectedReflectance_TrueColor',
-    name: 'VIIRS SNPP True Color',
-    description: 'Corrected reflectance true-color imagery from the VIIRS instrument on Suomi NPP satellite. Higher resolution successor to MODIS.',
+    id: 'MODIS_Terra_NDSI_Snow_Cover',
+    name: 'MODIS Snow Cover (NDSI)',
+    description: 'Daily Normalized Difference Snow Index cover extent from MODIS Terra.',
     defaultDate: '2024-01-15',
+    tileMatrixSet: 'GoogleMapsCompatible_Level8',
+    format: 'png',
+    maxZoom: 8,
   },
   {
-    id: 'MODIS_Terra_Snow_Cover',
-    name: 'MODIS Snow Cover',
-    description: 'Daily snow cover extent from MODIS Terra. Shows snow-covered land and ice in white, with cloud cover masked.',
+    id: 'MODIS_Terra_Land_Surface_Temp_Day',
+    name: 'MODIS Land Surface Temp (Day)',
+    description: 'Daytime radiative skin Land Surface Temperature from MODIS Terra at 1km resolution.',
     defaultDate: '2024-01-15',
-  },
-  {
-    id: 'MODIS_Fire_Thermal_Anomalies_All',
-    name: 'MODIS Fire & Thermal Anomalies',
-    description: 'Active fire and thermal anomaly detections from both MODIS Terra and Aqua instruments. Red dots indicate fire hotspots.',
-    defaultDate: '2024-01-15',
+    tileMatrixSet: 'GoogleMapsCompatible_Level7',
+    format: 'png',
+    maxZoom: 7,
   },
   {
     id: 'GHRSST_L4_MUR_Sea_Surface_Temperature',
     name: 'Sea Surface Temperature (MUR)',
     description: 'Multi-scale Ultra-high Resolution (MUR) sea surface temperature analysis at ~1km resolution from the GHRSST project.',
     defaultDate: '2024-01-15',
+    tileMatrixSet: 'GoogleMapsCompatible_Level7',
+    format: 'png',
+    maxZoom: 7,
   },
 ];
 
-// ── GIBS tile URL builder ─────────────────────────────────────────────
+// ── GIBS tile URL builders ────────────────────────────────────────────
 
 /**
- * Build a WMTS tile URL for the given GIBS layer.
- *
- * @param layer - GIBS layer ID (e.g., 'MODIS_Terra_CorrectedReflectance_TrueColor')
- * @param date  - ISO date string (YYYY-MM-DD)
- * @param z     - Zoom level
- * @param x     - Tile column
- * @param y     - Tile row
- * @returns Full WMTS tile URL
+ * Build a Leaflet `{z}/{y}/{x}` tile URL template for the given GIBS layer.
+ */
+export function getGIBSTileTemplate(layerId: string, date: string = 'default'): string {
+  const layer = GIBS_LAYERS.find(l => l.id === layerId);
+  const tileMatrixSet = layer?.tileMatrixSet ?? 'GoogleMapsCompatible_Level9';
+  const format = layer?.format ?? 'png';
+  const timeSegment = date || 'default';
+  return `${BASE_URL}/${layerId}/default/${timeSegment}/${tileMatrixSet}/{z}/{y}/{x}.${format}`;
+}
+
+/**
+ * Build a concrete WMTS tile URL for the given GIBS layer.
  */
 export function getGIBSTileUrl(
   layer: string,
@@ -79,10 +104,10 @@ export function getGIBSTileUrl(
   x: number,
   y: number
 ): string {
-  const tileMatrixSet = 'EPSG4326_250m';
-  return (
-    `${BASE_URL}/${layer}/default/${date}/${tileMatrixSet}/${z}/${y}/${x}.jpg`
-  );
+  return getGIBSTileTemplate(layer, date)
+    .replace('{z}', String(z))
+    .replace('{y}', String(y))
+    .replace('{x}', String(x));
 }
 
 // ── Connector implementation ──────────────────────────────────────────
@@ -100,21 +125,19 @@ export const gibsConnector: EarthDataConnector = {
   name: 'NASA GIBS WMTS Tile Service',
   shortName: 'GIBS',
   description:
-    'NASA Global Imagery Browse Services (GIBS) — WMTS map tile overlays for satellite imagery visualization. Provides true-color, NDVI, snow, fire, and SST layers.',
+    'NASA Global Imagery Browse Services (GIBS) — WMTS map tile overlays for satellite imagery visualization. Provides true-color, NDVI, snow, land surface temperature, and SST layers.',
   baseUrl: BASE_URL,
   capabilities: gibsCapabilities,
-  supportedVariables: [], // Map tiles, not tied to specific VariableIds
+  supportedVariables: [],
   provenanceType: 'satellite_observation',
   requiresAuth: false,
   requiresProxy: false,
 
   supportsVariable(_variableId: VariableId): boolean {
-    // GIBS provides map tiles, not variable-specific time series
     return false;
   },
 
   async fetchTimeSeries(_options: ConnectorFetchOptions): Promise<ConnectorFetchResult> {
-    // GIBS is a tile service — use getGIBSTileUrl() for map overlays
     return {
       points: [],
       provenance: 'satellite_observation',

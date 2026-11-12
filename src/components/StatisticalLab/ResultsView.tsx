@@ -1,20 +1,12 @@
 import React from 'react';
 import { AnalysisConfig } from './AnalysisPanel';
-import {
-  DescriptiveStats,
-  CorrelationResult,
-  RegressionResult,
-  PCAResult,
-  ChangePointResult,
-  SeasonalMKResult,
-} from '../../types/earthScience';
-import { TTestResult, AnovaResult } from '../../services/statistics/inferential';
+import { LabResultsBundle } from './StatisticalLab';
 import { HistogramChart } from '../charts/HistogramChart';
 import { BoxPlotChart } from '../charts/BoxPlotChart';
 import { HeatmapChart } from '../charts/HeatmapChart';
 import { DiagnosticPlots } from '../charts/DiagnosticPlots';
 import { ScatterMatrix } from '../charts/ScatterMatrix';
-import { Award, CheckCircle2, TrendingUp, Download } from 'lucide-react';
+import { TrendingUp, Download, Cpu } from 'lucide-react';
 
 interface ResultsViewProps {
   config: AnalysisConfig;
@@ -23,17 +15,7 @@ interface ResultsViewProps {
     primaryValues: number[];
     secondaryColsData: { name: string; values: number[] }[];
   };
-  results: {
-    descriptive?: DescriptiveStats;
-    correlation?: CorrelationResult;
-    correlationMatrix?: { matrix: number[][]; labels: string[] };
-    ttest?: TTestResult;
-    anova?: AnovaResult;
-    regression?: RegressionResult;
-    pca?: PCAResult;
-    trend?: SeasonalMKResult & { slope: number; acceleration?: number };
-    changePoint?: ChangePointResult;
-  };
+  results: LabResultsBundle;
 }
 
 export const ResultsView: React.FC<ResultsViewProps> = ({
@@ -41,7 +23,24 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
   data,
   results,
 }) => {
-  const { descriptive, correlation, correlationMatrix, ttest, anova, regression, pca, trend, changePoint } = results;
+  const {
+    descriptive,
+    bootstrap,
+    entropy,
+    correlation,
+    correlationMatrix,
+    crossCorrelation,
+    correlationFDR,
+    ttest,
+    anova,
+    regression,
+    pca,
+    trend,
+    changePoint,
+    cusumChangePoint,
+    fdr,
+    executionMeta,
+  } = results;
 
   const exportJSON = () => {
     const blob = new Blob([JSON.stringify({ config, results }, null, 2)], { type: 'application/json' });
@@ -55,12 +54,23 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header with Export */}
-      <div className="flex items-center justify-between bg-[#071326] border border-slate-800 rounded-xl p-4">
+      {/* Header with Execution Telemetry & Export */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#071326] border border-slate-800 rounded-xl p-4">
         <div>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/20">
-            {config.type.toUpperCase()} ANALYSIS
-          </span>
+          <div className="flex items-center space-x-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/20">
+              {config.type.toUpperCase()} ANALYSIS
+            </span>
+            {executionMeta?.viaWorker && (
+              <span
+                className="inline-flex items-center space-x-1 text-[10px] font-mono text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30"
+                title={`Off-thread tasks: ${executionMeta.tasks.join(', ')}`}
+              >
+                <Cpu className="w-3 h-3" />
+                <span>Web Worker • {executionMeta.durationMs.toFixed(1)} ms</span>
+              </span>
+            )}
+          </div>
           <h3 className="text-base font-bold text-white mt-1">
             Statistical Results for {data.primaryColName}
           </h3>
@@ -106,6 +116,58 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
               title={`${data.primaryColName} Quartile Spread`}
             />
           </div>
+
+          {/* Bootstrap CI + Information Entropy */}
+          {(bootstrap || entropy) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {bootstrap && (
+                <div className="bg-[#071326] border border-slate-800 rounded-2xl p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-white">
+                      Bootstrap Percentile CI ({bootstrap.statLabel.toUpperCase()}, B = {bootstrap.iterations})
+                    </h4>
+                    <span className="text-[10px] font-mono text-cyan-400">
+                      {Math.round((1 - config.alpha) * 100)}% CI
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs font-mono pt-1">
+                    <div className="p-2.5 bg-slate-900 rounded-lg">
+                      <span className="text-[10px] text-slate-500 block">Estimate</span>
+                      <span className="font-bold text-white">{bootstrap.estimate.toFixed(4)}</span>
+                    </div>
+                    <div className="p-2.5 bg-slate-900 rounded-lg">
+                      <span className="text-[10px] text-slate-500 block">Bootstrap SE</span>
+                      <span className="font-bold text-amber-400">{bootstrap.standardError.toFixed(4)}</span>
+                    </div>
+                    <div className="p-2.5 bg-slate-900 rounded-lg">
+                      <span className="text-[10px] text-slate-500 block">CI Bounds</span>
+                      <span className="font-bold text-emerald-400">
+                        [{bootstrap.ciLower.toFixed(3)}, {bootstrap.ciUpper.toFixed(3)}]
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {entropy && (
+                <div className="bg-[#071326] border border-slate-800 rounded-2xl p-4 space-y-2">
+                  <h4 className="text-xs font-bold text-white">
+                    Information Entropy & Regularity
+                  </h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono pt-1">
+                    <div className="p-2.5 bg-slate-900 rounded-lg">
+                      <span className="text-[10px] text-slate-500 block">Shannon Entropy</span>
+                      <span className="font-bold text-purple-400">{entropy.shannon.toFixed(3)} bits</span>
+                    </div>
+                    <div className="p-2.5 bg-slate-900 rounded-lg">
+                      <span className="text-[10px] text-slate-500 block">Sample Entropy (SampEn)</span>
+                      <span className="font-bold text-cyan-400">{entropy.sample.toFixed(3)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -159,6 +221,89 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
                   ...data.secondaryColsData,
                 ]}
               />
+            </div>
+          )}
+
+          {/* Cross-Correlation Function (Lead-Lag) */}
+          {crossCorrelation && crossCorrelation.lags.length > 0 && (
+            <div className="bg-[#071326] border border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-white">
+                  Lead-Lag Cross-Correlation Function (CCF): {crossCorrelation.pairLabel}
+                </h4>
+                {(() => {
+                  let bestIdx = 0;
+                  crossCorrelation.values.forEach((v, i) => {
+                    if (Math.abs(v) > Math.abs(crossCorrelation.values[bestIdx])) bestIdx = i;
+                  });
+                  return (
+                    <span className="text-[11px] font-mono text-cyan-400">
+                      Peak r = {crossCorrelation.values[bestIdx].toFixed(3)} at Lag {crossCorrelation.lags[bestIdx]}
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="flex items-end space-x-1 h-24 pt-2 border-b border-slate-800">
+                {crossCorrelation.values.map((val, idx) => {
+                  const pct = Math.min(100, Math.abs(val) * 100);
+                  return (
+                    <div key={idx} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+                      <div
+                        className={`w-full rounded-t transition-all ${
+                          val >= 0 ? 'bg-cyan-500/80' : 'bg-rose-500/80'
+                        }`}
+                        style={{ height: `${Math.max(4, pct)}%` }}
+                        title={`Lag ${crossCorrelation.lags[idx]}: r = ${val.toFixed(3)}`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between text-[10px] font-mono text-slate-500">
+                <span>Lag {crossCorrelation.lags[0]}</span>
+                <span>Lag 0 (Synchronous)</span>
+                <span>Lag +{crossCorrelation.lags[crossCorrelation.lags.length - 1]}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Pairwise Multiple-Testing FDR Table */}
+          {correlationFDR && (
+            <div className="bg-[#071326] border border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-white">
+                  Pairwise Multiple-Testing Correction (α = {config.alpha})
+                </h4>
+                <span className="text-[11px] font-mono text-emerald-400">
+                  {correlationFDR.bh.significantCount}/{correlationFDR.pairs.length} significant after BH FDR
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-[10px] uppercase text-slate-400">
+                      <th className="py-2">Pair</th>
+                      <th className="py-2">Raw p</th>
+                      <th className="py-2">BH FDR (q)</th>
+                      <th className="py-2">Holm p</th>
+                      <th className="py-2">Bonferroni p</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                    {correlationFDR.pairs.map((pair, idx) => (
+                      <tr key={pair}>
+                        <td className="py-1.5 font-semibold text-white">{pair}</td>
+                        <td className="py-1.5">{correlationFDR.rawPValues[idx].toFixed(4)}</td>
+                        <td className={`py-1.5 font-bold ${correlationFDR.bh.significant[idx] ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          {correlationFDR.bh.adjusted[idx].toFixed(4)}
+                        </td>
+                        <td className="py-1.5">{correlationFDR.holm.adjusted[idx].toFixed(4)}</td>
+                        <td className="py-1.5">{correlationFDR.bonferroni.adjusted[idx].toFixed(4)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -378,47 +523,142 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
                 <span className="text-base font-bold text-emerald-400">{trend.pValue.toFixed(4)}</span>
               </div>
               <div className="p-3 bg-slate-900 rounded-xl">
-                <span className="text-[10px] text-slate-500 block">Theil-Sen Slope / yr</span>
+                <span className="text-[10px] text-slate-500 block">Theil-Sen Slope / step</span>
                 <span className="text-base font-bold text-amber-400">{trend.slope.toFixed(4)}</span>
               </div>
             </div>
+
+            {(trend.acceleration !== undefined || entropy) && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono pt-2 border-t border-slate-800">
+                {trend.acceleration !== undefined && (
+                  <div className="p-3 bg-slate-900/80 rounded-xl">
+                    <span className="text-[10px] text-slate-500 block">Trend Acceleration (Δ slope)</span>
+                    <span className="text-sm font-bold text-cyan-300">
+                      {trend.acceleration > 0 ? '+' : ''}{trend.acceleration.toFixed(4)}
+                    </span>
+                  </div>
+                )}
+                {entropy && (
+                  <>
+                    <div className="p-3 bg-slate-900/80 rounded-xl">
+                      <span className="text-[10px] text-slate-500 block">Shannon Entropy</span>
+                      <span className="text-sm font-bold text-purple-300">{entropy.shannon.toFixed(3)} bits</span>
+                    </div>
+                    <div className="p-3 bg-slate-900/80 rounded-xl">
+                      <span className="text-[10px] text-slate-500 block">Sample Entropy</span>
+                      <span className="text-sm font-bold text-emerald-300">{entropy.sample.toFixed(3)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* 8. CHANGE-POINT */}
-      {config.type === 'changepoint' && changePoint && (
-        <div className="space-y-6">
-          <div className="bg-[#071326] border border-slate-800 rounded-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between">
+      {/* 8. CHANGE-POINT (Pettitt + CUSUM comparison) */}
+      {config.type === 'changepoint' && (changePoint || cusumChangePoint) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {[changePoint, cusumChangePoint]
+            .filter((cp): cp is NonNullable<typeof cp> => Boolean(cp))
+            .map(cp => (
+              <div key={cp.method} className="bg-[#071326] border border-slate-800 rounded-2xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-white">
+                    {cp.method} Non-Parametric Change-Point
+                  </h4>
+                  <span className="px-2.5 py-1 rounded text-xs font-bold font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                    {cp.significanceLevel} (p = {cp.pValue.toFixed(4)})
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+                  <div className="p-3 bg-slate-900 rounded-xl">
+                    <span className="text-[10px] text-slate-500 block">Change Index</span>
+                    <span className="text-base font-bold text-cyan-400">{cp.changePointIndex}</span>
+                  </div>
+                  <div className="p-3 bg-slate-900 rounded-xl">
+                    <span className="text-[10px] text-slate-500 block">Mean Before</span>
+                    <span className="text-base font-bold text-white">{cp.meanBefore.toFixed(2)}</span>
+                  </div>
+                  <div className="p-3 bg-slate-900 rounded-xl">
+                    <span className="text-[10px] text-slate-500 block">Mean After</span>
+                    <span className="text-base font-bold text-white">{cp.meanAfter.toFixed(2)}</span>
+                  </div>
+                  <div className="p-3 bg-slate-900 rounded-xl">
+                    <span className="text-[10px] text-slate-500 block">Abrupt Shift (Δ)</span>
+                    <span className="text-base font-bold text-amber-400">
+                      {cp.shift > 0 ? '+' : ''}{cp.shift.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* 9. MULTIPLE-TESTING CORRECTION (FDR) */}
+      {config.type === 'fdr' && fdr && (
+        <div className="bg-[#071326] border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
               <h4 className="text-xs font-bold text-white">
-                {changePoint.method} Non-Parametric Change-Point
+                Multiple-Testing Trend Corrections ({fdr.items.length} Series, α = {config.alpha})
               </h4>
-              <span className="px-2.5 py-1 rounded text-xs font-bold font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                {changePoint.significanceLevel}
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Adjusts Seasonal Mann-Kendall p-values across variables to control False Discovery Rate (BH) and Family-Wise Error Rate.
+              </p>
+            </div>
+            <div className="flex items-center space-x-2 text-[11px] font-mono">
+              <span className="px-2 py-1 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-500/30">
+                BH FDR: {fdr.bh.significantCount}/{fdr.items.length} sig
+              </span>
+              <span className="px-2 py-1 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-500/30">
+                Holm: {fdr.holm.significantCount}/{fdr.items.length} sig
+              </span>
+              <span className="px-2 py-1 rounded bg-amber-950/60 text-amber-300 border border-amber-500/30">
+                Bonferroni: {fdr.bonferroni.significantCount}/{fdr.items.length} sig
               </span>
             </div>
+          </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
-              <div className="p-3 bg-slate-900 rounded-xl">
-                <span className="text-[10px] text-slate-500 block">Change Index / Step</span>
-                <span className="text-base font-bold text-cyan-400">{changePoint.changePointIndex}</span>
-              </div>
-              <div className="p-3 bg-slate-900 rounded-xl">
-                <span className="text-[10px] text-slate-500 block">Mean Before</span>
-                <span className="text-base font-bold text-white">{changePoint.meanBefore.toFixed(2)}</span>
-              </div>
-              <div className="p-3 bg-slate-900 rounded-xl">
-                <span className="text-[10px] text-slate-500 block">Mean After</span>
-                <span className="text-base font-bold text-white">{changePoint.meanAfter.toFixed(2)}</span>
-              </div>
-              <div className="p-3 bg-slate-900 rounded-xl">
-                <span className="text-[10px] text-slate-500 block">Abrupt Shift (Δ)</span>
-                <span className="text-base font-bold text-amber-400">
-                  {changePoint.shift > 0 ? '+' : ''}{changePoint.shift.toFixed(2)}
-                </span>
-              </div>
-            </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-mono">
+              <thead>
+                <tr className="border-b border-slate-800 text-[10px] uppercase text-slate-400">
+                  <th className="py-2">Column</th>
+                  <th className="py-2">Kendall τ</th>
+                  <th className="py-2">Raw p</th>
+                  <th className="py-2">BH FDR (q)</th>
+                  <th className="py-2">Holm p</th>
+                  <th className="py-2">Bonferroni p</th>
+                  <th className="py-2">FDR Decision</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                {fdr.items.map((item, idx) => (
+                  <tr key={item.name}>
+                    <td className="py-2 font-bold text-white">{item.name}</td>
+                    <td className="py-2">{item.tau.toFixed(3)}</td>
+                    <td className="py-2">{item.rawP.toFixed(4)}</td>
+                    <td className="py-2 text-emerald-300">{fdr.bh.adjusted[idx].toFixed(4)}</td>
+                    <td className="py-2 text-cyan-300">{fdr.holm.adjusted[idx].toFixed(4)}</td>
+                    <td className="py-2 text-amber-300">{fdr.bonferroni.adjusted[idx].toFixed(4)}</td>
+                    <td className="py-2">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          fdr.bh.significant[idx]
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {fdr.bh.significant[idx] ? 'Significant' : 'Not Significant'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

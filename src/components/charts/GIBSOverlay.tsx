@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { GIBS_LAYERS, GIBSLayer, getGIBSTileUrl } from '../../services/connectors/gibsConnector';
+import { GIBS_LAYERS, GIBSLayer, getGIBSTileTemplate } from '../../services/connectors/gibsConnector';
 import { Layers, Eye, EyeOff, Calendar } from 'lucide-react';
 
 interface GIBSOverlayProps {
-  onSelectLayer?: (tileUrl: string | null, layerName?: string) => void;
+  onSelectLayer?: (tileUrl: string | null, layerName?: string, opacity?: number, maxNativeZoom?: number) => void;
+  onOpacityChange?: (opacity: number) => void;
 }
 
-export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({ onSelectLayer }) => {
+export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({ onSelectLayer, onOpacityChange }) => {
   const [selectedLayerId, setSelectedLayerId] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0]
@@ -29,12 +30,10 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({ onSelectLayer }) => {
     }
   };
 
-  const updateLayer = (layerId: string, date: string) => {
-    const tileUrl = getGIBSTileUrl(layerId, date, 0, 0, 0)
-      .replace('/0/0/0.jpg', '/{z}/{y}/{x}.jpg')
-      .replace('/0/0/0.png', '/{z}/{y}/{x}.png');
+  const updateLayer = (layerId: string, date: string, nextOpacity = opacity) => {
+    const tileUrl = getGIBSTileTemplate(layerId, date);
     const layer = GIBS_LAYERS.find(l => l.id === layerId);
-    onSelectLayer?.(tileUrl, layer?.name);
+    onSelectLayer?.(tileUrl, layer?.name, nextOpacity, layer?.maxZoom);
   };
 
   const handleLayerChange = (layerId: string) => {
@@ -116,7 +115,11 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({ onSelectLayer }) => {
               max="1.0"
               step="0.05"
               value={opacity}
-              onChange={e => setOpacity(parseFloat(e.target.value))}
+              onChange={e => {
+                const nextOpacity = parseFloat(e.target.value);
+                setOpacity(nextOpacity);
+                onOpacityChange?.(nextOpacity);
+              }}
               className="w-full accent-cyan-400"
             />
           </div>
