@@ -24,14 +24,25 @@ export const EarthMap: React.FC<EarthMapProps> = ({
   const [clickCoords, setClickCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [isPinModeActive, setIsPinModeActive] = useState<boolean>(false);
 
-  // Tile layer URLs
+  // Free, keyless basemap tile URLs
   const tileLayers = {
-    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    dark: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    darkLabels: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
     satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    streets: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    streets: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
   };
 
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const tileLayerRef = useRef<L.Layer | null>(null);
+
+  const createBaseLayer = (layerKey: 'dark' | 'satellite' | 'streets'): L.Layer => {
+    if (layerKey === 'dark') {
+      return L.layerGroup([
+        L.tileLayer(tileLayers.dark, { maxZoom: 18, zIndex: 1 }),
+        L.tileLayer(tileLayers.darkLabels, { maxZoom: 18, zIndex: 2 }),
+      ]);
+    }
+    return L.tileLayer(tileLayers[layerKey], { maxZoom: 18 });
+  };
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -50,9 +61,7 @@ export const EarthMap: React.FC<EarthMapProps> = ({
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
       // Add base tile layer
-      tileLayerRef.current = L.tileLayer(tileLayers.dark, {
-        maxZoom: 18,
-      }).addTo(map);
+      tileLayerRef.current = createBaseLayer('dark').addTo(map);
 
       // Handle Map Click for custom coordinates
       map.on('click', (e: L.LeafletMouseEvent) => {
@@ -158,7 +167,7 @@ export const EarthMap: React.FC<EarthMapProps> = ({
     setMapTileLayer(layerKey);
     if (tileLayerRef.current && mapInstanceRef.current) {
       mapInstanceRef.current.removeLayer(tileLayerRef.current);
-      tileLayerRef.current = L.tileLayer(tileLayers[layerKey], { maxZoom: 18 }).addTo(mapInstanceRef.current);
+      tileLayerRef.current = createBaseLayer(layerKey).addTo(mapInstanceRef.current);
     }
   };
 
@@ -170,51 +179,46 @@ export const EarthMap: React.FC<EarthMapProps> = ({
       {/* Floating Map Controls & Overlays */}
       <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-2">
         {/* Layer Switcher */}
-        <div className="flex items-center bg-slate-950/85 backdrop-blur-md rounded-lg p-1 border border-slate-700/80 shadow-md text-xs">
+        <div className="flex items-center bg-[#030915]/90 backdrop-blur-md rounded-lg p-1 border border-slate-700/80 shadow-md text-xs">
           <Layers className="w-3.5 h-3.5 text-slate-400 ml-1.5 mr-1" />
-          <button
-            onClick={() => handleTileChange('dark')}
-            className={`px-2 py-1 rounded font-medium transition-colors ${
-              mapTileLayer === 'dark' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Dark
-          </button>
-          <button
-            onClick={() => handleTileChange('satellite')}
-            className={`px-2 py-1 rounded font-medium transition-colors ${
-              mapTileLayer === 'satellite' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Satellite
-          </button>
-          <button
-            onClick={() => handleTileChange('streets')}
-            className={`px-2 py-1 rounded font-medium transition-colors ${
-              mapTileLayer === 'streets' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Terrain
-          </button>
+          {(
+            [
+              { key: 'dark', label: 'Dark' },
+              { key: 'satellite', label: 'Satellite' },
+              { key: 'streets', label: 'Terrain' },
+            ] as const
+          ).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => handleTileChange(key)}
+              className={`px-2 py-1 rounded font-medium transition-colors ${
+                mapTileLayer === key
+                  ? 'bg-[#3EC7F2] text-[#030915] font-semibold'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {/* Click-to-Pin Helper */}
-        <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-950/80 backdrop-blur-md rounded-lg border border-slate-700/80 text-xs text-slate-300">
-          <Crosshair className="w-3.5 h-3.5 text-cyan-400 animate-spin-slow" />
+        <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#030915]/85 backdrop-blur-md rounded-lg border border-slate-700/80 text-xs text-slate-300">
+          <Crosshair className="w-3.5 h-3.5 text-[#3EC7F2] animate-spin-slow" />
           <span>Click any point on Earth to query NASA data</span>
         </div>
       </div>
 
       {/* Selected Region Status Pill (Bottom Left) */}
       <div className="absolute bottom-3 left-3 z-10 max-w-sm">
-        <div className="bg-slate-950/90 backdrop-blur-md rounded-xl p-3 border border-slate-800 shadow-xl flex items-start space-x-3">
-          <div className="p-2 rounded-lg bg-blue-950/80 text-cyan-400 border border-blue-800/60 shrink-0">
+        <div className="bg-[#030915]/90 backdrop-blur-md rounded-xl p-3 border border-slate-800 shadow-xl flex items-start space-x-3">
+          <div className="p-2 rounded-lg bg-[#071A2F] text-[#3EC7F2] border border-[#3EC7F2]/30 shrink-0">
             <MapPin className="w-4 h-4" />
           </div>
           <div className="overflow-hidden">
             <div className="flex items-center space-x-2">
               <h4 className="text-sm font-bold text-white truncate">{selectedRegion.name}</h4>
-              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-slate-800 text-cyan-300 rounded border border-slate-700 shrink-0">
+              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-slate-800 text-[#3EC7F2] rounded border border-slate-700 shrink-0">
                 {selectedRegion.category}
               </span>
             </div>
@@ -228,7 +232,7 @@ export const EarthMap: React.FC<EarthMapProps> = ({
       {/* Reset Map View Button (Bottom Right next to zoom) */}
       <button
         onClick={() => mapInstanceRef.current?.setView([20, 0], 2)}
-        className="absolute bottom-3 right-12 z-10 p-2 bg-slate-950/90 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg border border-slate-700/80 shadow-md transition-colors"
+        className="absolute bottom-3 right-12 z-10 p-2 bg-[#030915]/90 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg border border-slate-700/80 shadow-md transition-colors"
         title="Reset World View"
       >
         <Navigation className="w-4 h-4" />

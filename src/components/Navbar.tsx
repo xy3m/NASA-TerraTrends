@@ -27,22 +27,22 @@ export const Navbar: React.FC<NavbarProps> = ({
   selectedRegionName,
 }) => {
   return (
-    <header className="sticky top-0 z-50 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 lg:px-8 py-3 transition-all">
+    <header className="sticky top-0 z-50 bg-[#030915]/95 backdrop-blur-md border-b border-[#3EC7F2]/15 px-4 lg:px-8 py-3 transition-all">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
         
-        {/* Brand & NASA Logo */}
+        {/* Brand & GEOIRIS Logo */}
         <div className="flex items-center space-x-3 w-full md:w-auto justify-between md:justify-start">
           <div className="flex items-center space-x-3 cursor-pointer" onClick={() => onSelectMode('explorer')}>
-            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 via-indigo-700 to-cyan-500 shadow-lg shadow-blue-500/20 ring-1 ring-blue-400/40">
-              <Globe2 className="w-6 h-6 text-white animate-pulse" />
-              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-cyan-400 ring-2 ring-slate-950"></div>
+            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#030915] border border-[#3EC7F2]/40 shadow-lg shadow-[#3EC7F2]/15 ring-1 ring-white/10">
+              <Globe2 className="w-6 h-6 text-[#3EC7F2] animate-pulse" />
+              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[#3EC7F2] ring-2 ring-[#030915]"></div>
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-extrabold text-lg tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-cyan-300 to-white">
-                  NASA TerraTrends
+                <span className="font-extrabold text-xl tracking-widest uppercase leading-none">
+                  <span className="text-white">GEO</span><span className="text-[#3EC7F2]">IRIS</span>
                 </span>
-                <span className="px-1.5 py-0.5 text-[10px] font-bold tracking-widest uppercase bg-blue-900/60 text-cyan-300 rounded border border-blue-600/40">
+                <span className="px-1.5 py-0.5 text-[10px] font-bold tracking-widest uppercase bg-[#071A2F] text-[#3EC7F2] rounded border border-[#3EC7F2]/30">
                   2026 Space Apps
                 </span>
               </div>
@@ -53,22 +53,22 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* NASA API Status Pill (Mobile view) */}
-          <div className="md:hidden flex items-center space-x-1.5 px-2 py-1 rounded-full text-xs font-mono bg-slate-900 border border-slate-800">
-            <Radio className={`w-3 h-3 ${isLiveNasa ? 'text-emerald-400 animate-pulse' : 'text-blue-400'}`} />
-            <span className={isLiveNasa ? 'text-emerald-400' : 'text-slate-400'}>
+          <div className="md:hidden flex items-center space-x-1.5 px-2 py-1 rounded-full text-xs font-mono bg-[#071326] border border-slate-800">
+            <Radio className={`w-3 h-3 ${isLiveNasa ? 'text-emerald-400 animate-pulse' : 'text-[#3EC7F2]'}`} />
+            <span className={isLiveNasa ? 'text-emerald-400' : 'text-slate-300'}>
               {isLiveNasa ? 'LIVE NASA' : 'CALIBRATED'}
             </span>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <nav className="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800/80 shadow-inner overflow-x-auto max-w-full">
+        <nav className="flex items-center bg-[#071326]/90 p-1 rounded-xl border border-slate-800/80 shadow-inner overflow-x-auto max-w-full">
           <button
             onClick={() => onSelectMode('explorer')}
             className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
               currentMode === 'explorer'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                ? 'bg-[#3EC7F2] text-[#030915] font-bold shadow-md shadow-[#3EC7F2]/25'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
             <Globe2 className="w-3.5 h-3.5" />

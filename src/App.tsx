@@ -119,7 +119,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-slate-950">
+    <div className="min-h-screen bg-[#030915] text-white flex flex-col selection:bg-[#3EC7F2] selection:text-[#030915]">
       
       {/* Top Navigation */}
       <Navbar
@@ -138,11 +138,11 @@ export const App: React.FC = () => {
           <div className="space-y-8 animate-fadeIn">
             
             {/* Mission Hero Banner */}
-            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950/40 to-slate-900 border border-slate-800 p-6 sm:p-8 shadow-2xl">
-              <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 rounded-full bg-blue-600/10 blur-3xl pointer-events-none"></div>
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#030915] via-[#071A2F] to-[#030915] border border-[#3EC7F2]/20 p-6 sm:p-8 shadow-2xl">
+              <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 rounded-full bg-[#3EC7F2]/10 blur-3xl pointer-events-none"></div>
               <div className="relative z-10 max-w-3xl space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-600 text-white shadow-md shadow-blue-600/20 flex items-center space-x-1.5">
+                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#3EC7F2] text-[#030915] shadow-md shadow-[#3EC7F2]/20 flex items-center space-x-1.5">
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>NASA Earth Science Challenge</span>
                   </span>
@@ -170,8 +170,8 @@ export const App: React.FC = () => {
                       onClick={() => handleSelectRegion(r)}
                       className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
                         selectedRegion.id === r.id
-                          ? 'bg-blue-600 text-white font-bold shadow-sm'
-                          : 'bg-slate-950/80 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                          ? 'bg-[#3EC7F2] text-[#030915] font-bold shadow-sm shadow-[#3EC7F2]/25'
+                          : 'bg-[#030915]/80 hover:bg-slate-800 text-slate-300 border border-slate-800'
                       }`}
                     >
                       {r.name.split(',')[0]}
@@ -312,17 +312,19 @@ export const App: React.FC = () => {
       />
 
       {/* Footer */}
-      <footer className="mt-12 bg-slate-950 border-t border-slate-900 py-8 px-4 text-xs text-slate-400">
+      <footer className="mt-12 bg-[#030915] border-t border-slate-900 py-8 px-4 text-xs text-slate-400">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-1.5 font-bold text-white">
-              <Globe2 className="w-4 h-4 text-cyan-400" />
-              <span>NASA TerraTrends</span>
+            <div className="flex items-center space-x-1.5 font-bold tracking-wider">
+              <Globe2 className="w-4 h-4 text-[#3EC7F2]" />
+              <span>
+                <span className="text-white">GEO</span><span className="text-[#3EC7F2]">IRIS</span>
+              </span>
             </div>
             <span>•</span>
             <span>2026 NASA Space Apps Challenge</span>
             <span>•</span>
-            <span className="text-cyan-400">Advanced Earth Science & Software</span>
+            <span className="text-[#3EC7F2]">Advanced Earth Science & Software</span>
           </div>
 
           <div className="flex items-center space-x-4 text-slate-400">
@@ -330,7 +332,7 @@ export const App: React.FC = () => {
             <span>•</span>
             <button
               onClick={() => setIsExportOpen(true)}
-              className="text-cyan-400 hover:text-cyan-300 underline"
+              className="text-[#3EC7F2] hover:text-cyan-300 underline"
             >
               Export Dossier
             </button>

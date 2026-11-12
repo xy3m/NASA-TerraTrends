@@ -33,7 +33,7 @@ export const DataExportModal: React.FC<DataExportModalProps> = ({
 
   // Generate CSV Text
   const generateCsv = () => {
-    let csv = `# NASA TerraTrends Earth Science Analysis Export\n`;
+    let csv = `# GEOIRIS Earth Science Analysis Export\n`;
     csv += `# Region: ${region.name} (${region.coordinates[0].toFixed(2)}N, ${region.coordinates[1].toFixed(2)}E)\n`;
     csv += `# Variable: ${variable.name} (${variable.unit})\n`;
     csv += `# Missions: ${variable.missions.join(', ')}\n`;
@@ -55,7 +55,7 @@ export const DataExportModal: React.FC<DataExportModalProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `NASA_TerraTrends_${variable.id}_${region.name.replace(/\s+/g, '_')}_${stats.startDate}_${stats.endDate}.csv`;
+    link.download = `GEOIRIS_${variable.id}_${region.name.replace(/\s+/g, '_')}_${stats.startDate}_${stats.endDate}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -63,7 +63,7 @@ export const DataExportModal: React.FC<DataExportModalProps> = ({
   const handleDownloadJson = () => {
     const jsonPayload = {
       metadata: {
-        tool: 'NASA TerraTrends Earth Science Change Detective',
+        tool: 'GEOIRIS Earth Science Change Detective',
         event: '2026 NASA Space Apps Challenge',
         exportDate: new Date().toISOString(),
         region: {
@@ -88,12 +88,12 @@ export const DataExportModal: React.FC<DataExportModalProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `NASA_TerraTrends_${variable.id}_${region.name.replace(/\s+/g, '_')}.json`;
+    link.download = `GEOIRIS_${variable.id}_${region.name.replace(/\s+/g, '_')}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
-  const citationText = `NASA TerraTrends (2026). Decadal Trend and Significance Analysis of ${variable.name} in ${region.name} (${stats.startDate} to ${stats.endDate}). NASA Space Apps Challenge. Based on ${variable.missions.join(', ')} observations.`;
+  const citationText = `GEOIRIS (2026). Decadal Trend and Significance Analysis of ${variable.name} in ${region.name} (${stats.startDate} to ${stats.endDate}). NASA Space Apps Challenge. Based on ${variable.missions.join(', ')} observations.`;
 
   const handleCopyCitation = () => {
     navigator.clipboard.writeText(citationText);

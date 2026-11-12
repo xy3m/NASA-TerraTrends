@@ -245,7 +245,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     if (chartRef.current) {
       const url = chartRef.current.toBase64Image();
       const link = document.createElement('a');
-      link.download = `NASA_TerraTrends_${variable.id}_${regionName.replace(/\s+/g, '_')}.png`;
+      link.download = `GEOIRIS_${variable.id}_${regionName.replace(/\s+/g, '_')}.png`;
       link.href = url;
       link.click();
     }
