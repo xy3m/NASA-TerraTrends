@@ -33,7 +33,8 @@ import {
   ArrowRight, 
   Satellite, 
   Database,
-  ExternalLink 
+  ExternalLink,
+  BookOpen
 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -256,14 +257,28 @@ export const App: React.FC = () => {
 
             {/* Section 2: Earth Science Variable Selector */}
             <section ref={section2Ref} className="space-y-3 scroll-mt-24">
-              <div>
-                <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-                  <Satellite className="w-5 h-5 text-blue-400" />
-                  <span>2. Select Earth Science Variable & Mission</span>
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Choose from satellite-measured parameters and reanalysis models to identify directional trends
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                    <Satellite className="w-5 h-5 text-blue-400" />
+                    <span>2. Select Earth Science Variable & Mission</span>
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Choose from satellite-measured parameters and reanalysis models to identify directional trends.{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentMode('encyclopedia');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="inline-flex items-center space-x-1 text-[#3EC7F2] hover:text-cyan-300 underline underline-offset-2 font-medium"
+                    >
+                      <BookOpen className="w-3 h-3" />
+                      <span>Visit the Encyclopedia tab</span>
+                    </button>{' '}
+                    to learn more about the variables, the missions and the models.
+                  </p>
+                </div>
               </div>
 
               <VariableSelector

@@ -11,6 +11,7 @@ import {
   Sun, 
   ShieldAlert, 
   Satellite, 
+  Cpu,
   HelpCircle,
   Sparkles
 } from 'lucide-react';
@@ -123,24 +124,30 @@ export const VariableSelector: React.FC<VariableSelectorProps> = ({
                 </div>
 
                 {/* Variable Name */}
-                <h4 className="text-sm font-bold text-slate-100 group-hover:text-blue-300 transition-colors line-clamp-1">
+                <h4 className="text-sm font-bold text-slate-100 group-hover:text-blue-300 transition-colors">
                   {variable.shortName}
                 </h4>
 
                 {/* Plain English Student Explanation */}
-                <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                   {variable.studentExplanation}
                 </p>
               </div>
 
-              {/* Missions Tag Footer */}
-              <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between">
-                <div className="flex items-center space-x-1 text-[10px] text-slate-400 truncate">
-                  <Satellite className="w-3 h-3 text-cyan-400 shrink-0" />
-                  <span className="truncate">{variable.missions[0]}</span>
-                </div>
-                <div className="shrink-0 text-[10px] text-blue-400 font-medium group-hover:translate-x-0.5 transition-transform">
-                  Analyze →
+              {/* Mission / Model Tag Footer */}
+              <div className="mt-3 pt-2.5 border-t border-slate-800/60">
+                <div className="flex items-start space-x-1.5 text-[11px] text-slate-400">
+                  {variable.measurementType === 'Satellite Instrument' ? (
+                    <Satellite className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <Cpu className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                  )}
+                  <span>
+                    <span className="text-slate-300 font-semibold">
+                      {variable.measurementType === 'Satellite Instrument' ? 'Mission:' : 'Model:'}
+                    </span>{' '}
+                    {variable.missions[0]}
+                  </span>
                 </div>
               </div>
             </div>
