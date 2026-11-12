@@ -344,6 +344,21 @@ export function generateCuratedTimeSeries(region: HotspotRegion, variable: Earth
     if (variable.id === 'soil_moist') value = Math.max(0.02, Math.min(0.55, value));
     if (variable.id === 'evapo') value = Math.max(2, value);
     if (variable.id === 'ozone') value = Math.max(10, Math.min(80, value));
+    if (variable.id === 'pressure') value = Math.max(50, Math.min(108, value));
+    if (variable.id === 'humidity') value = Math.max(2, Math.min(100, value));
+    if (variable.id === 'specific_humidity') value = Math.max(0.1, Math.min(28, value));
+    if (variable.id === 'wind_speed') value = Math.max(0.1, Math.min(45, value));
+    if (variable.id === 'radiation_sw') value = Math.max(0, Math.min(450, value));
+    if (variable.id === 'radiation_lw') value = Math.max(100, Math.min(520, value));
+    if (variable.id === 'albedo') value = Math.max(0.04, Math.min(0.95, value));
+    if (variable.id === 'snow_depth') value = Math.max(0, Math.min(350, value));
+    if (variable.id === 'snow_precip') value = Math.max(0, Math.min(300, value));
+    if (variable.id === 'ozone_total') value = Math.max(100, Math.min(550, value));
+    if (variable.id === 'soil_moist_top') value = Math.max(0.01, Math.min(0.99, value));
+    if (variable.id === 'soil_moist_prof') value = Math.max(0.02, Math.min(0.99, value));
+    if (variable.id === 'sst') value = Math.max(-2, Math.min(36, value));
+    if (variable.id === 'streamflow') value = Math.max(1, value);
+    if (variable.id === 'evi') value = Math.max(0.01, Math.min(0.98, value));
 
     const monthStr = currentMonth < 10 ? `0${currentMonth}` : `${currentMonth}`;
     rawPoints.push({
@@ -565,6 +580,118 @@ function getRegionVariableBaseline(region: HotspotRegion, varId: VariableId): Ba
       seasonalPhase: 4.7 + hemisphereShift,
       harmonic2Amp: 2.1,
       noiseStd: 1.8,
+    },
+    pressure: {
+      baseline: +(101.3 - absLat * 0.04).toFixed(1),
+      trendPerYear: -0.005,
+      seasonalAmp: 0.65,
+      seasonalPhase: 1.2 + hemisphereShift,
+      noiseStd: 0.25,
+    },
+    humidity: {
+      baseline: +(62 + (absLat < 25 ? 12 : -6)).toFixed(1),
+      trendPerYear: -0.05,
+      seasonalAmp: 14.0,
+      seasonalPhase: 3.5 + hemisphereShift,
+      noiseStd: 3.5,
+    },
+    specific_humidity: {
+      baseline: +Math.max(0.5, 14.5 - absLat * 0.22).toFixed(2),
+      trendPerYear: 0.02,
+      seasonalAmp: +(4.2 * latScale).toFixed(2),
+      seasonalPhase: 4.5 + hemisphereShift,
+      noiseStd: 0.65,
+    },
+    wind_speed: {
+      baseline: +(4.6 + (absLat > 55 ? 2.2 : 0)).toFixed(1),
+      trendPerYear: 0.01,
+      seasonalAmp: 1.2,
+      seasonalPhase: 0.8 + hemisphereShift,
+      noiseStd: 0.45,
+    },
+    radiation_sw: {
+      baseline: +Math.max(30, 225 - absLat * 2.1).toFixed(1),
+      trendPerYear: 0.15,
+      seasonalAmp: +(75 * latScale).toFixed(1),
+      seasonalPhase: 4.7 + hemisphereShift,
+      noiseStd: 8.5,
+    },
+    radiation_lw: {
+      baseline: +(345 - absLat * 1.4).toFixed(1),
+      trendPerYear: 0.22,
+      seasonalAmp: +(32 * latScale).toFixed(1),
+      seasonalPhase: 4.6 + hemisphereShift,
+      noiseStd: 7.0,
+    },
+    albedo: {
+      baseline: +(absLat > 60 ? 0.62 : 0.22).toFixed(2),
+      trendPerYear: absLat > 60 ? -0.003 : -0.0005,
+      seasonalAmp: +(0.12 * latScale).toFixed(2),
+      seasonalPhase: 1.5 + hemisphereShift,
+      noiseStd: 0.02,
+    },
+    snow_depth: {
+      baseline: +(absLat > 50 ? 38 : 3).toFixed(1),
+      trendPerYear: absLat > 50 ? -0.45 : -0.02,
+      seasonalAmp: +(35 * latScale).toFixed(1),
+      seasonalPhase: 1.8 + hemisphereShift,
+      noiseStd: 4.5,
+    },
+    snow_precip: {
+      baseline: +(absLat > 40 ? 28 : 2).toFixed(1),
+      trendPerYear: -0.18,
+      seasonalAmp: +(24 * latScale).toFixed(1),
+      seasonalPhase: 1.5 + hemisphereShift,
+      noiseStd: 5.5,
+    },
+    ozone_total: {
+      baseline: +(305 + (absLat / 90) * 45).toFixed(1),
+      trendPerYear: 0.25,
+      seasonalAmp: 32.0,
+      seasonalPhase: 2.2 + hemisphereShift,
+      noiseStd: 6.5,
+    },
+    soil_moist_top: {
+      baseline: 0.24,
+      trendPerYear: -0.001,
+      seasonalAmp: 0.08,
+      seasonalPhase: 1.5 + hemisphereShift,
+      noiseStd: 0.02,
+    },
+    soil_moist_prof: {
+      baseline: 0.32,
+      trendPerYear: -0.0008,
+      seasonalAmp: 0.05,
+      seasonalPhase: 1.8 + hemisphereShift,
+      noiseStd: 0.015,
+    },
+    sea_level: {
+      baseline: 0.04,
+      trendPerYear: 0.0035,
+      seasonalAmp: 0.07,
+      seasonalPhase: 3.2 + hemisphereShift,
+      noiseStd: 0.018,
+    },
+    sst: {
+      baseline: +Math.max(-1.5, 26 - absLat * 0.42).toFixed(1),
+      trendPerYear: 0.022,
+      seasonalAmp: +(4.5 * latScale).toFixed(1),
+      seasonalPhase: 4.8 + hemisphereShift,
+      noiseStd: 0.45,
+    },
+    streamflow: {
+      baseline: 280,
+      trendPerYear: -0.85,
+      seasonalAmp: 160,
+      seasonalPhase: 3.8 + hemisphereShift,
+      noiseStd: 35,
+    },
+    evi: {
+      baseline: +(absLat > 60 ? 0.16 : 0.44).toFixed(2),
+      trendPerYear: -0.0008,
+      seasonalAmp: +(0.11 * latScale).toFixed(2),
+      seasonalPhase: 4.4 + hemisphereShift,
+      noiseStd: 0.018,
     },
   };
 

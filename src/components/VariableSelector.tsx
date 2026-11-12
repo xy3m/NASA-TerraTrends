@@ -19,7 +19,8 @@ import {
   Snowflake,
   Waves,
   Activity,
-  Layers
+  Layers,
+  Check
 } from 'lucide-react';
 
 interface VariableSelectorProps {
@@ -36,7 +37,15 @@ export const VariableSelector: React.FC<VariableSelectorProps> = ({
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const categories = ['All', 'Atmosphere', 'Land', 'Hydrosphere', 'Biosphere', 'Cryosphere', 'Ocean'];
+  const categories = [
+    { label: 'All', count: EARTH_VARIABLES.length },
+    { label: 'Atmosphere', count: EARTH_VARIABLES.filter(v => v.category === 'Atmosphere').length },
+    { label: 'Land', count: EARTH_VARIABLES.filter(v => v.category === 'Land').length },
+    { label: 'Hydrosphere', count: EARTH_VARIABLES.filter(v => v.category === 'Hydrosphere').length },
+    { label: 'Biosphere', count: EARTH_VARIABLES.filter(v => v.category === 'Biosphere').length },
+    { label: 'Cryosphere', count: EARTH_VARIABLES.filter(v => v.category === 'Cryosphere').length },
+    { label: 'Ocean', count: EARTH_VARIABLES.filter(v => v.category === 'Ocean').length },
+  ];
 
   const filteredVariables = EARTH_VARIABLES.filter(v => {
     const matchesCategory = activeCategory === 'All' || v.category === activeCategory;
@@ -83,15 +92,20 @@ export const VariableSelector: React.FC<VariableSelectorProps> = ({
         <div className="flex items-center space-x-1.5 overflow-x-auto w-full sm:w-auto p-1 bg-slate-900/90 rounded-xl border border-slate-800">
           {categories.map(cat => (
             <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
-                activeCategory === cat
+              key={cat.label}
+              onClick={() => setActiveCategory(cat.label)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex items-center space-x-1.5 ${
+                activeCategory === cat.label
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
               }`}
             >
-              {cat}
+              <span>{cat.label}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                activeCategory === cat.label ? 'bg-blue-800 text-white' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {cat.count}
+              </span>
             </button>
           ))}
         </div>
@@ -105,6 +119,21 @@ export const VariableSelector: React.FC<VariableSelectorProps> = ({
         />
       </div>
 
+      {/* Variable Count Summary Banner */}
+      <div className="flex items-center justify-between px-1 text-xs text-slate-400">
+        <span>
+          Showing <strong className="text-cyan-400">{filteredVariables.length}</strong> of <strong>{EARTH_VARIABLES.length}</strong> Earth system variables
+        </span>
+        {activeCategory !== 'All' && (
+          <button
+            onClick={() => setActiveCategory('All')}
+            className="text-[11px] text-blue-400 hover:underline"
+          >
+            Show all 24 variables
+          </button>
+        )}
+      </div>
+
       {/* Variable Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {filteredVariables.map(variable => {
@@ -114,16 +143,32 @@ export const VariableSelector: React.FC<VariableSelectorProps> = ({
           return (
             <div
               key={variable.id}
+              role="button"
+              tabIndex={0}
               onClick={() => onSelectVariable(variable)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelectVariable(variable);
+                }
+              }}
               className={`relative group p-3.5 rounded-xl border cursor-pointer transition-all duration-200 flex flex-col justify-between ${
                 isSelected
-                  ? 'bg-slate-900/90 border-blue-500 shadow-lg shadow-blue-500/10 ring-1 ring-blue-500/50'
+                  ? 'bg-slate-900/95 border-cyan-400 shadow-xl shadow-cyan-500/20 ring-2 ring-cyan-400/70'
                   : 'bg-slate-950/60 hover:bg-slate-900/60 border-slate-800 hover:border-slate-700'
               }`}
             >
+              {/* Selected Active Badge */}
+              {isSelected && (
+                <div className="absolute -top-2.5 left-2 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-cyan-400 text-slate-950 text-[10px] font-black shadow-md shadow-cyan-400/30 ring-2 ring-slate-950 z-10">
+                  <Check className="w-2.5 h-2.5 stroke-[3]" />
+                  <span>ACTIVE</span>
+                </div>
+              )}
+
               {/* Recommended Badge */}
               {isRecommended && (
-                <div className="absolute -top-2 right-2 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-[10px] font-bold text-slate-950 shadow-md">
+                <div className="absolute -top-2 right-2 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-[10px] font-bold text-slate-950 shadow-md z-10">
                   <Sparkles className="w-2.5 h-2.5" />
                   <span>Key Indicator</span>
                 </div>

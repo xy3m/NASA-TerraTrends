@@ -366,6 +366,82 @@ function generateScientificImplication(
         ? `Stratospheric ozone depletion reduces UV shielding, while tropospheric ozone declines indicate shifts in precursor nitrogen oxides and volatile organic compounds.`
         : `Elevated tropospheric ozone acts as a potent ground-level pollutant and secondary greenhouse gas.`;
 
+    case 'pressure':
+      return direction === 'Decreasing'
+        ? `Barometric pressure decline (-${Math.abs(ratePerDecade).toFixed(2)} ${unit}/decade) indicates intensified cyclogenesis, deepened regional thermal depressions, or poleward displacement of storm tracks.`
+        : `Rising barometric pressure (+${Math.abs(ratePerDecade).toFixed(2)} ${unit}/decade) reveals strengthening anticyclonic ridges, prolonged fair-weather stagnation, and subsidence drying.`;
+
+    case 'humidity':
+      return direction === 'Decreasing'
+        ? `Desiccation of relative humidity (-${Math.abs(ratePerDecade).toFixed(1)} ${unit}/decade) reflects atmospheric vapor pressure deficit expansion, escalating evaporative demand and wildfire fuel dryness.`
+        : `Increasing relative humidity (+${Math.abs(ratePerDecade).toFixed(1)} ${unit}/decade) amplifies heat index stress and enhances condensation potential in maritime boundary layers.`;
+
+    case 'specific_humidity':
+      return direction === 'Increasing'
+        ? `Absolute moisture surge (+${Math.abs(ratePerDecade).toFixed(2)} ${unit}/decade) follows thermodynamic Clausius-Clapeyron scaling (~7% per 1°C warming), enhancing total precipitable water available for extreme storm events.`
+        : `Atmospheric specific humidity deficit indicates continental interior drying or shifts in maritime air mass advection.`;
+
+    case 'wind_speed':
+      return direction === 'Increasing'
+        ? `Wind speed acceleration (+${Math.abs(ratePerDecade).toFixed(2)} ${unit}/decade) strengthens oceanic wave mixing, dust suspension, and wind energy yields, but elevates windthrow and storm damage risk.`
+        : `Surface atmospheric stilling (-${Math.abs(ratePerDecade).toFixed(2)} ${unit}/decade) weakens particulate dispersion, worsening urban smog trapping and reducing surface boundary layer ventilation.`;
+
+    case 'radiation_sw':
+      return direction === 'Increasing'
+        ? `Solar brightening (+${Math.abs(ratePerDecade).toFixed(1)} ${unit}/decade) reflects reduced optical cloud thickness or declining aerosol particulate pollution, increasing daytime ground insolation.`
+        : `Solar dimming (-${Math.abs(ratePerDecade).toFixed(1)} ${unit}/decade) indicates elevated cloud cover reflectivity or particulate scattering from industrial emissions or biomass smoke.`;
+
+    case 'radiation_lw':
+      return direction === 'Increasing'
+        ? `Amplified downward longwave irradiance (+${Math.abs(ratePerDecade).toFixed(1)} ${unit}/decade) provides direct empirical evidence of enhanced greenhouse radiative forcing by rising carbon dioxide, methane, and water vapor.`
+        : `Diminished downward thermal radiation suggests clearing low-cloud decks or decreasing boundary layer moisture.`;
+
+    case 'albedo':
+      return direction === 'Decreasing'
+        ? `Surface albedo darkening (-${Math.abs(ratePerDecade).toFixed(3)}/decade) is a critical positive feedback: retreating snow and ice expose darker land/water, absorbing vastly more solar heat.`
+        : `Albedo increase indicates surface snow cover expansion, glacier advance, or desertification with exposed high-reflectance mineral soils.`;
+
+    case 'snow_depth':
+      return direction === 'Decreasing'
+        ? `Snowpack shrinkage (-${Math.abs(ratePerDecade).toFixed(1)} ${unit}/decade) threatens downstream meltwater reservoirs, accelerates spring runoff timing, and curtails winter tourism.`
+        : `Accumulating snowpack (+${Math.abs(ratePerDecade).toFixed(1)} ${unit}/decade) reflects winter precipitation intensification in sub-freezing polar and alpine elevations.`;
+
+    case 'snow_precip':
+      return direction === 'Decreasing'
+        ? `Shift from snowfall to rainfall (-${Math.abs(ratePerDecade).toFixed(1)} ${unit}/decade) indicates winter isotherms climbing above freezing, reducing seasonal mountain snowpack storage.`
+        : `Heightened snowfall indicates ocean warming providing extra moisture to sub-zero continental storms.`;
+
+    case 'ozone_total':
+      return direction === 'Increasing'
+        ? `Total column ozone recovery (+${Math.abs(ratePerDecade).toFixed(1)} ${unit}/decade) confirms the success of Montreal Protocol chlorofluorocarbon bans, restoring the vital UV-B shielding shield.`
+        : `Total ozone column reduction indicates persistent polar vortex cold pooling or springtime catalytic halogen destruction.`;
+
+    case 'soil_moist_top':
+    case 'soil_moist_prof':
+      return direction === 'Decreasing'
+        ? `Soil wetness depletion (-${Math.abs(ratePerDecade).toFixed(3)}/decade) directly constrains agricultural productivity, triggers vegetative wilt, and exacerbates sensible heat flux partitioning.`
+        : `Elevated soil wetness enhances root-zone water supplies but may create anaerobic root conditions or elevate groundwater tables.`;
+
+    case 'sea_level':
+      return direction === 'Increasing'
+        ? `Accelerating sea level rise (+${Math.abs(ratePerDecade).toFixed(3)} ${unit}/decade) compounds coastal inundation, saltwater intrusion into aquifers, and coastal erosion from combined thermal expansion and land ice discharge.`
+        : `Relative local sea level fall indicates post-glacial isostatic rebound outpacing eustatic ocean volume rise.`;
+
+    case 'sst':
+      return direction === 'Increasing'
+        ? `Marine thermal accumulation (+${Math.abs(ratePerDecade).toFixed(2)} ${unit}/decade) triggers coral bleaching events, shifts fish species distributions, and fuels tropical cyclone intensification.`
+        : `Marine cooling reflects localized upwelling enhancement or freshwater melt lens stratification.`;
+
+    case 'streamflow':
+      return direction === 'Decreasing'
+        ? `River discharge contraction (-${Math.abs(ratePerDecade).toFixed(1)} ${unit}/decade) imperils municipal water supplies, hydroelectric generation capacity, and freshwater riverine ecosystems.`
+        : `Heightened river discharge (+${Math.abs(ratePerDecade).toFixed(1)} ${unit}/decade) amplifies peak flood stage hazards and sediment export to deltaic basins.`;
+
+    case 'evi':
+      return direction === 'Decreasing'
+        ? `Enhanced Vegetation Index decline (-${Math.abs(ratePerDecade).toFixed(3)}/decade) indicates canopy degradation and canopy defoliation independent of soil background interference.`
+        : `Enhanced Vegetation Index increase (+${Math.abs(ratePerDecade).toFixed(3)}/decade) demonstrates robust structural biomass gain and canopy leaf area index growth.`;
+
     default:
       return `Observed rate of change represents a measurable directional forcing on local ecological and climatic balances.`;
   }
