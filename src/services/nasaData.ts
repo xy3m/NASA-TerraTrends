@@ -1,7 +1,8 @@
 import { EarthVariable, HotspotRegion, TimeSeriesPoint, VariableId } from '../types/earthScience';
 import { processTimeSeries } from './statistics';
+import { ADDITIONAL_EARTH_VARIABLES } from './nasaDataExpanded';
 
-export const EARTH_VARIABLES: EarthVariable[] = [
+const CORE_EARTH_VARIABLES: EarthVariable[] = [
   {
     id: 'temp_air',
     name: 'Surface Air Temperature (2-Meter)',
@@ -122,6 +123,11 @@ export const EARTH_VARIABLES: EarthVariable[] = [
     iconName: 'ShieldAlert',
     driverExamples: ['Photochemical smog formation', 'Lightning-generated nitrogen oxides', 'Stratospheric-tropospheric exchange folds', 'Fossil fuel combustion'],
   },
+];
+
+export const EARTH_VARIABLES: EarthVariable[] = [
+  ...CORE_EARTH_VARIABLES,
+  ...ADDITIONAL_EARTH_VARIABLES,
 ];
 
 export const HOTSPOT_REGIONS: HotspotRegion[] = [
@@ -585,6 +591,19 @@ export const NASA_POWER_PARAM_MAP: Partial<Record<VariableId, string>> = {
   lst_day: 'TS',            // Earth Skin Temperature (°C)
   evapo: 'EVLAND',          // Evaporation Land (mm/day -> mm/month)
   aod: 'AOD_55',            // Aerosol Optical Depth 550nm (dimensionless)
+  pressure: 'PS',           // Surface Pressure (kPa)
+  humidity: 'RH2M',         // Relative Humidity at 2m (%)
+  specific_humidity: 'QV2M',// Specific Humidity at 2m (g/kg)
+  wind_speed: 'WS10M',      // Wind Speed at 10m (m/s)
+  radiation_sw: 'ALLSKY_SFC_SW_DWN', // Shortwave Radiation (W/m²)
+  radiation_lw: 'ALLSKY_SFC_LW_DWN', // Longwave Radiation (W/m²)
+  albedo: 'ALLSKY_SRF_ALB', // Surface Albedo (fraction)
+  snow_depth: 'SNODP',      // Snow Depth (cm)
+  snow_precip: 'PRECSNO',   // Snowfall (mm/day -> mm/month)
+  ozone_total: 'TO3',       // Total Column Ozone (DU)
+  soil_moist_top: 'GWETTOP',// Top Soil Wetness (0-1)
+  soil_moist_prof: 'GWETPROF',// Profile Soil Wetness (0-1)
+  sst: 'TS',                // Sea Surface Temp (°C)
 };
 
 function buildCalibratedFallback(
@@ -678,8 +697,8 @@ export async function fetchLiveNasaPowerData(
           let val = parameterData[key];
           // NASA fill value is -999
           if (typeof val === 'number' && val > -900) {
-            // PRECTOTCORR and EVLAND are returned in mm/day; convert to mm/month
-            if (nasaParam === 'PRECTOTCORR' || nasaParam === 'EVLAND') {
+            // PRECTOTCORR, EVLAND, and PRECSNO are returned in mm/day; convert to mm/month
+            if (nasaParam === 'PRECTOTCORR' || nasaParam === 'EVLAND' || nasaParam === 'PRECSNO') {
               const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
               val = val * daysInMonth;
             }

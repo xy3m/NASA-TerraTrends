@@ -236,3 +236,4 @@ export function pcaAnalysis(data: number[][], _labels?: string[]): PCAResult {
     componentLabels,
   };
 }
+

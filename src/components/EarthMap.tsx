@@ -3,6 +3,7 @@ import L from 'leaflet';
 import { HotspotRegion } from '../types/earthScience';
 import { HOTSPOT_REGIONS } from '../services/nasaData';
 import { MapPin, Navigation, Crosshair, Layers } from 'lucide-react';
+import { GIBSOverlay } from './charts/GIBSOverlay';
 
 interface EarthMapProps {
   selectedRegion: HotspotRegion;
@@ -33,6 +34,18 @@ export const EarthMap: React.FC<EarthMapProps> = ({
   };
 
   const tileLayerRef = useRef<L.Layer | null>(null);
+  const gibsLayerRef = useRef<L.TileLayer | null>(null);
+
+  const handleGIBSLayerSelect = (tileUrl: string | null) => {
+    if (gibsLayerRef.current && mapInstanceRef.current) {
+      mapInstanceRef.current.removeLayer(gibsLayerRef.current);
+      gibsLayerRef.current = null;
+    }
+    if (tileUrl && mapInstanceRef.current) {
+      gibsLayerRef.current = L.tileLayer(tileUrl, { maxZoom: 9, zIndex: 10, opacity: 0.75 });
+      gibsLayerRef.current.addTo(mapInstanceRef.current);
+    }
+  };
 
   const createBaseLayer = (layerKey: 'dark' | 'satellite' | 'streets'): L.Layer => {
     if (layerKey === 'dark') {
@@ -236,6 +249,11 @@ export const EarthMap: React.FC<EarthMapProps> = ({
           <Crosshair className="w-3.5 h-3.5 text-[#3EC7F2] animate-spin-slow" />
           <span>Click any point on Earth to query NASA data</span>
         </div>
+      </div>
+
+      {/* GIBS Satellite Overlay Floating Controller (Top Right) */}
+      <div className="absolute top-3 right-3 z-10 hidden sm:block">
+        <GIBSOverlay onSelectLayer={handleGIBSLayerSelect} />
       </div>
 
       {/* Selected Region Status Pill (Bottom Left) */}

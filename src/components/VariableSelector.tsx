@@ -13,7 +13,13 @@ import {
   Satellite, 
   Cpu,
   HelpCircle,
-  Sparkles
+  Sparkles,
+  Gauge,
+  Flame,
+  Snowflake,
+  Waves,
+  Activity,
+  Layers
 } from 'lucide-react';
 
 interface VariableSelectorProps {
@@ -30,7 +36,7 @@ export const VariableSelector: React.FC<VariableSelectorProps> = ({
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const categories = ['All', 'Atmosphere', 'Land', 'Hydrosphere', 'Biosphere'];
+  const categories = ['All', 'Atmosphere', 'Land', 'Hydrosphere', 'Biosphere', 'Cryosphere', 'Ocean'];
 
   const filteredVariables = EARTH_VARIABLES.filter(v => {
     const matchesCategory = activeCategory === 'All' || v.category === activeCategory;
@@ -50,6 +56,22 @@ export const VariableSelector: React.FC<VariableSelectorProps> = ({
       case 'aod': return <Wind className="w-4 h-4 text-purple-400" />;
       case 'lst_day': return <Sun className="w-4 h-4 text-orange-400" />;
       case 'ozone': return <ShieldAlert className="w-4 h-4 text-pink-400" />;
+      case 'pressure': return <Gauge className="w-4 h-4 text-indigo-400" />;
+      case 'humidity': return <Droplets className="w-4 h-4 text-sky-400" />;
+      case 'specific_humidity': return <CloudRain className="w-4 h-4 text-cyan-400" />;
+      case 'wind_speed': return <Wind className="w-4 h-4 text-purple-400" />;
+      case 'radiation_sw': return <Sun className="w-4 h-4 text-amber-400" />;
+      case 'radiation_lw': return <Flame className="w-4 h-4 text-rose-400" />;
+      case 'albedo': return <Sparkles className="w-4 h-4 text-slate-300" />;
+      case 'snow_depth': return <Snowflake className="w-4 h-4 text-sky-200" />;
+      case 'snow_precip': return <CloudRain className="w-4 h-4 text-sky-300" />;
+      case 'ozone_total': return <ShieldAlert className="w-4 h-4 text-fuchsia-400" />;
+      case 'soil_moist_top': return <Sprout className="w-4 h-4 text-yellow-500" />;
+      case 'soil_moist_prof': return <Layers className="w-4 h-4 text-yellow-700" />;
+      case 'sea_level': return <Waves className="w-4 h-4 text-blue-500" />;
+      case 'sst': return <Thermometer className="w-4 h-4 text-blue-400" />;
+      case 'streamflow': return <Activity className="w-4 h-4 text-teal-400" />;
+      case 'evi': return <Trees className="w-4 h-4 text-green-500" />;
       default: return <Satellite className="w-4 h-4 text-slate-400" />;
     }
   };
