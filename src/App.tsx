@@ -13,7 +13,7 @@ import {
   fetchLiveNasaPowerData 
 } from './services/nasaData';
 import { analyzeTrend } from './services/statistics';
-import { Navbar, AppMode } from './components/Navbar';
+import { Navbar, AppMode, DataFeedSource } from './components/Navbar';
 import { EarthMap } from './components/EarthMap';
 import { VariableSelector } from './components/VariableSelector';
 import { TimeSeriesChart } from './components/TimeSeriesChart';
@@ -126,6 +126,12 @@ export const App: React.FC = () => {
     setCurrentMode('explorer'); // Navigate back to explorer to inspect
   };
 
+  const dataFeedSource: DataFeedSource = isLiveNasa
+    ? 'live'
+    : selectedRegion.id.startsWith('csv_')
+      ? 'csv'
+      : 'calibrated';
+
   return (
     <div className="min-h-screen bg-[#030915] text-white flex flex-col selection:bg-[#3EC7F2] selection:text-[#030915]">
       
@@ -134,7 +140,7 @@ export const App: React.FC = () => {
         currentMode={currentMode}
         onSelectMode={setCurrentMode}
         onOpenExport={() => setIsExportOpen(true)}
-        isLiveNasa={isLiveNasa}
+        dataFeedSource={dataFeedSource}
         selectedRegionName={selectedRegion.name}
       />
 

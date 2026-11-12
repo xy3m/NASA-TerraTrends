@@ -10,12 +10,37 @@ import {
 } from 'lucide-react';
 
 export type AppMode = 'explorer' | 'detective' | 'contrast' | 'encyclopedia' | 'upload';
+export type DataFeedSource = 'live' | 'calibrated' | 'csv';
+
+const DATA_FEED_META: Record<
+  DataFeedSource,
+  { shortLabel: string; label: string; colorClass: string; pulse: boolean }
+> = {
+  live: {
+    shortLabel: 'LIVE NASA',
+    label: 'NASA POWER API (Live)',
+    colorClass: 'text-emerald-400',
+    pulse: true,
+  },
+  csv: {
+    shortLabel: 'CUSTOM CSV',
+    label: 'Custom CSV Upload',
+    colorClass: 'text-amber-400',
+    pulse: false,
+  },
+  calibrated: {
+    shortLabel: 'CALIBRATED',
+    label: 'Calibrated Baseline Model',
+    colorClass: 'text-[#3EC7F2]',
+    pulse: false,
+  },
+};
 
 interface NavbarProps {
   currentMode: AppMode;
   onSelectMode: (mode: AppMode) => void;
   onOpenExport: () => void;
-  isLiveNasa: boolean;
+  dataFeedSource: DataFeedSource;
   selectedRegionName: string;
 }
 
@@ -23,9 +48,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentMode,
   onSelectMode,
   onOpenExport,
-  isLiveNasa,
+  dataFeedSource,
   selectedRegionName,
 }) => {
+  const feedMeta = DATA_FEED_META[dataFeedSource];
+
   return (
     <header className="sticky top-0 z-50 bg-[#030915]/95 backdrop-blur-md border-b border-[#3EC7F2]/15 px-4 lg:px-8 py-3 transition-all">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
@@ -52,11 +79,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
 
-          {/* NASA API Status Pill (Mobile view) */}
+          {/* Data Feed Status Pill (Mobile view) */}
           <div className="md:hidden flex items-center space-x-1.5 px-2 py-1 rounded-full text-xs font-mono bg-[#071326] border border-slate-800">
-            <Radio className={`w-3 h-3 ${isLiveNasa ? 'text-emerald-400 animate-pulse' : 'text-[#3EC7F2]'}`} />
-            <span className={isLiveNasa ? 'text-emerald-400' : 'text-slate-300'}>
-              {isLiveNasa ? 'LIVE NASA' : 'CALIBRATED'}
+            <Radio className={`w-3 h-3 ${feedMeta.colorClass} ${feedMeta.pulse ? 'animate-pulse' : ''}`} />
+            <span className={feedMeta.colorClass}>
+              {feedMeta.shortLabel}
             </span>
           </div>
         </div>
@@ -124,14 +151,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </nav>
 
-        {/* Right Actions: API Status & Export */}
+        {/* Right Actions: Data Feed Status & Export */}
         <div className="hidden md:flex items-center space-x-3">
           <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono">
-            <Radio className={`w-3.5 h-3.5 ${isLiveNasa ? 'text-emerald-400 animate-pulse' : 'text-cyan-400'}`} />
+            <Radio className={`w-3.5 h-3.5 ${feedMeta.colorClass} ${feedMeta.pulse ? 'animate-pulse' : ''}`} />
             <div>
               <span className="text-slate-500 text-[10px] block leading-none">DATA FEED</span>
-              <span className={`font-semibold ${isLiveNasa ? 'text-emerald-400' : 'text-cyan-400'}`}>
-                {isLiveNasa ? 'NASA POWER API (Live)' : 'NASA Merged Climatology'}
+              <span className={`font-semibold ${feedMeta.colorClass}`}>
+                {feedMeta.label}
               </span>
             </div>
           </div>

@@ -264,7 +264,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             </h3>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Missions: {variable.missions.join(' • ')} • Sampling: Monthly (1990–2024)
+            Missions: {variable.missions.join(' • ')} • Window: {stats.startDate} to {stats.endDate} ({stats.sampleCount} pts)
           </p>
         </div>
 
