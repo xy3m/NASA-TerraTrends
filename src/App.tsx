@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   EarthVariable, 
   HotspotRegion, 
@@ -9,10 +9,12 @@ import {
 import { 
   EARTH_VARIABLES, 
   HOTSPOT_REGIONS, 
+  NASA_POWER_PARAM_MAP,
   generateCuratedTimeSeries, 
-  fetchLiveNasaPowerData 
+  fetchLiveNasaPowerData,
+  parseCustomCsv
 } from './services/nasaData';
-import { analyzeTrend } from './services/statistics';
+import { analyzeTrend, processTimeSeries } from './services/statistics';
 import { Navbar, AppMode, DataFeedSource } from './components/Navbar';
 import { EarthMap } from './components/EarthMap';
 import { VariableSelector } from './components/VariableSelector';
@@ -44,8 +46,12 @@ export const App: React.FC = () => {
 
   // Custom data overrides (from live API or CSV upload)
   const [customPoints, setCustomPoints] = useState<TimeSeriesPoint[] | null>(null);
+  const [uploadedCsvText, setUploadedCsvText] = useState<string | null>(null);
   const [isLiveNasa, setIsLiveNasa] = useState<boolean>(false);
   const liveQueryIdRef = useRef<number>(0);
+  const section1Ref = useRef<HTMLElement | null>(null);
+  const section2Ref = useRef<HTMLElement | null>(null);
+  const scrollTargetRef = useRef<'section1' | 'section2' | null>(null);
 
   // Export Modal state
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
@@ -80,22 +86,40 @@ export const App: React.FC = () => {
     setIsLiveNasa(isLive);
   };
 
+  // Fetch live NASA POWER data on initial load for the default hotspot if supported
+  useEffect(() => {
+    if (NASA_POWER_PARAM_MAP[selectedVariable.id]) {
+      loadCoordinateData(
+        selectedRegion.coordinates[0],
+        selectedRegion.coordinates[1],
+        selectedVariable.id
+      );
+    }
+  }, []);
+
   // Handle region selection from map or list
   const handleSelectRegion = (region: HotspotRegion) => {
     liveQueryIdRef.current++;
     setSelectedRegion(region);
     setCustomPoints(null);
+    setUploadedCsvText(null);
     setIsLiveNasa(false);
 
     // Auto-select the region's primary variable if available
     const primary = EARTH_VARIABLES.find(v => v.id === region.primaryVariable);
+    const targetVar = primary || selectedVariable;
     if (primary) {
       setSelectedVariable(primary);
+    }
+
+    if (NASA_POWER_PARAM_MAP[targetVar.id]) {
+      loadCoordinateData(region.coordinates[0], region.coordinates[1], targetVar.id);
     }
   };
 
   // Handle map click anywhere on Earth
   const handleSelectCustomCoordinates = async (lat: number, lon: number) => {
+    setUploadedCsvText(null);
     const customRegion: HotspotRegion = {
       id: `coord_${lat.toFixed(2)}_${lon.toFixed(2)}`,
       name: `Earth Point (${lat >= 0 ? lat.toFixed(2) + '°N' : Math.abs(lat).toFixed(2) + '°S'}, ${lon >= 0 ? lon.toFixed(2) + '°E' : Math.abs(lon).toFixed(2) + '°W'})`,
@@ -116,15 +140,29 @@ export const App: React.FC = () => {
     region: HotspotRegion,
     variable: EarthVariable,
     points: TimeSeriesPoint[],
-    isLive: boolean
+    isLive: boolean,
+    rawCsvText?: string
   ) => {
     liveQueryIdRef.current++;
+    scrollTargetRef.current = region.hasCoordinates === false ? 'section2' : 'section1';
     setSelectedRegion(region);
     setSelectedVariable(variable);
     setCustomPoints(points);
+    setUploadedCsvText(rawCsvText ?? null);
     setIsLiveNasa(isLive);
     setCurrentMode('explorer'); // Navigate back to explorer to inspect
   };
+
+  useEffect(() => {
+    if (currentMode !== 'explorer' || !scrollTargetRef.current) return;
+    const target = scrollTargetRef.current;
+    scrollTargetRef.current = null;
+
+    requestAnimationFrame(() => {
+      const targetEl = target === 'section2' ? section2Ref.current : section1Ref.current;
+      targetEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [currentMode, selectedRegion]);
 
   const dataFeedSource: DataFeedSource = isLiveNasa
     ? 'live'
@@ -196,7 +234,7 @@ export const App: React.FC = () => {
             </div>
 
             {/* Section 1: Global Interactive Map */}
-            <section className="space-y-3">
+            <section ref={section1Ref} className="space-y-3 scroll-mt-24">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-white flex items-center space-x-2">
@@ -217,7 +255,7 @@ export const App: React.FC = () => {
             </section>
 
             {/* Section 2: Earth Science Variable Selector */}
-            <section className="space-y-3">
+            <section ref={section2Ref} className="space-y-3 scroll-mt-24">
               <div>
                 <h2 className="text-lg font-bold text-white flex items-center space-x-2">
                   <Satellite className="w-5 h-5 text-blue-400" />
@@ -232,13 +270,21 @@ export const App: React.FC = () => {
                 selectedVariableId={selectedVariable.id}
                 onSelectVariable={(v) => {
                   setSelectedVariable(v);
-                  if (selectedRegion.id.startsWith('coord_')) {
-                    const [lat, lon] = selectedRegion.coordinates;
-                    loadCoordinateData(lat, lon, v.id);
+                  if (selectedRegion.id.startsWith('csv_') && uploadedCsvText) {
+                    try {
+                      const rawPoints = parseCustomCsv(uploadedCsvText, v.id);
+                      setCustomPoints(processTimeSeries(rawPoints));
+                    } catch {
+                      // Keep existing points if re-parsing fails
+                    }
                   } else if (!selectedRegion.id.startsWith('csv_')) {
                     liveQueryIdRef.current++;
                     setCustomPoints(null);
                     setIsLiveNasa(false);
+                    if (NASA_POWER_PARAM_MAP[v.id]) {
+                      const [lat, lon] = selectedRegion.coordinates;
+                      loadCoordinateData(lat, lon, v.id);
+                    }
                   }
                 }}
                 recommendedVariableId={selectedRegion.primaryVariable}
@@ -316,7 +362,10 @@ export const App: React.FC = () => {
         {/* MODE 5: CUSTOM DATA STUDIO & API */}
         {currentMode === 'upload' && (
           <div className="animate-fadeIn">
-            <CustomDataUploader onAnalyzeCustomData={handleAnalyzeCustomData} />
+            <CustomDataUploader
+              initialCoordinates={selectedRegion.coordinates}
+              onAnalyzeCustomData={handleAnalyzeCustomData}
+            />
           </div>
         )}
 

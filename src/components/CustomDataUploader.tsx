@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { EarthVariable, HotspotRegion, TimeSeriesPoint, TrendAnalysisResult, VariableId } from '../types/earthScience';
-import { EARTH_VARIABLES, NASA_POWER_PARAM_MAP, fetchLiveNasaPowerData, parseCustomCsv } from '../services/nasaData';
+import { EARTH_VARIABLES, NASA_POWER_PARAM_MAP, detectCsvPrimaryVariable, extractCsvCoordinates, fetchLiveNasaPowerData, parseCustomCsv } from '../services/nasaData';
 import { analyzeTrend, processTimeSeries } from '../services/statistics';
 import { TimeSeriesChart } from './TimeSeriesChart';
 import { StatsSummaryCard } from './StatsSummaryCard';
@@ -17,53 +17,60 @@ import {
 } from 'lucide-react';
 
 interface CustomDataUploaderProps {
+  initialCoordinates?: [number, number];
   onAnalyzeCustomData: (
     region: HotspotRegion,
     variable: EarthVariable,
     points: TimeSeriesPoint[],
-    isLiveNasa: boolean
+    isLiveNasa: boolean,
+    rawCsvText?: string
   ) => void;
 }
 
 export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
+  initialCoordinates,
   onAnalyzeCustomData,
 }) => {
   const [activeTab, setActiveTab] = useState<'coordinates' | 'csv'>('coordinates');
 
-  // Coordinates state
-  const [latInput, setLatInput] = useState<string>('40.71');
-  const [lonInput, setLonInput] = useState<string>('-74.01');
+  // Coordinates state (shared between NASA Coordinate Query & CSV Location)
+  const [latInput, setLatInput] = useState<string>(
+    initialCoordinates ? initialCoordinates[0].toFixed(2) : '40.71'
+  );
+  const [lonInput, setLonInput] = useState<string>(
+    initialCoordinates ? initialCoordinates[1].toFixed(2) : '-74.01'
+  );
   const [selectedVarId, setSelectedVarId] = useState<VariableId>('temp_air');
   const [isLoadingApi, setIsLoadingApi] = useState<boolean>(false);
   const [apiFeedback, setApiFeedback] = useState<string | null>(null);
 
   // CSV state
   const [csvText, setCsvText] = useState<string>(
-`Date,Value
-1990-01,12.4
-1990-02,13.1
-1990-03,14.2
-1990-04,16.5
-1990-05,19.8
-1990-06,22.3
-1990-07,25.6
-1990-08,24.9
-1990-09,21.5
-1990-10,17.2
-1990-11,14.1
-1990-12,12.8
-2020-01,14.1
-2020-02,14.8
-2020-03,15.9
-2020-04,18.2
-2020-05,21.5
-2020-06,24.1
-2020-07,27.5
-2020-08,26.8
-2020-09,23.4
-2020-10,19.1
-2020-11,15.8
-2020-12,14.4`
+`Date,Latitude,Longitude,Value
+1990-01,40.71,-74.01,12.4
+1990-02,40.71,-74.01,13.1
+1990-03,40.71,-74.01,14.2
+1990-04,40.71,-74.01,16.5
+1990-05,40.71,-74.01,19.8
+1990-06,40.71,-74.01,22.3
+1990-07,40.71,-74.01,25.6
+1990-08,40.71,-74.01,24.9
+1990-09,40.71,-74.01,21.5
+1990-10,40.71,-74.01,17.2
+1990-11,40.71,-74.01,14.1
+1990-12,40.71,-74.01,12.8
+2020-01,40.71,-74.01,14.1
+2020-02,40.71,-74.01,14.8
+2020-03,40.71,-74.01,15.9
+2020-04,40.71,-74.01,18.2
+2020-05,40.71,-74.01,21.5
+2020-06,40.71,-74.01,24.1
+2020-07,40.71,-74.01,27.5
+2020-08,40.71,-74.01,26.8
+2020-09,40.71,-74.01,23.4
+2020-10,40.71,-74.01,19.1
+2020-11,40.71,-74.01,15.8
+2020-12,40.71,-74.01,14.4`
   );
   const [customDatasetName, setCustomDatasetName] = useState<string>('Local Environmental Station');
   const [csvError, setCsvError] = useState<string | null>(null);
@@ -77,19 +84,28 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
     { name: 'Great Barrier Reef', lat: -16.92, lon: 145.77 },
   ];
 
-  // Handle Live NASA API fetch
-  const handleFetchLiveNasa = async () => {
+  // Shared coordinate validation helper
+  const parseCoordinates = (): { lat: number; lon: number } | string => {
     const lat = parseFloat(latInput);
     const lon = parseFloat(lonInput);
 
     if (isNaN(lat) || lat < -90 || lat > 90) {
-      setApiFeedback('Please enter a valid latitude between -90 and 90.');
-      return;
+      return 'Please enter a valid latitude between -90 and 90.';
     }
     if (isNaN(lon) || lon < -180 || lon > 180) {
-      setApiFeedback('Please enter a valid longitude between -180 and 180.');
+      return 'Please enter a valid longitude between -180 and 180.';
+    }
+    return { lat, lon };
+  };
+
+  // Handle Live NASA API fetch
+  const handleFetchLiveNasa = async () => {
+    const parsedCoords = parseCoordinates();
+    if (typeof parsedCoords === 'string') {
+      setApiFeedback(parsedCoords);
       return;
     }
+    const { lat, lon } = parsedCoords;
 
     setIsLoadingApi(true);
     setApiFeedback(null);
@@ -129,6 +145,10 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
       if (text) {
         setCsvText(text);
         setCustomDatasetName(file.name.replace(/\.[^/.]+$/, ''));
+        const detectedVar = detectCsvPrimaryVariable(text);
+        if (detectedVar) {
+          setSelectedVarId(detectedVar);
+        }
       }
     };
     reader.readAsText(file);
@@ -137,23 +157,30 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
   // Process Custom CSV
   const handleProcessCsv = () => {
     setCsvError(null);
+
     try {
-      const rawPoints = parseCustomCsv(csvText);
+      const rawPoints = parseCustomCsv(csvText, selectedVarId);
       const processed = processTimeSeries(rawPoints);
       const targetVar = EARTH_VARIABLES.find(v => v.id === selectedVarId) || EARTH_VARIABLES[0];
+      const csvCoords = extractCsvCoordinates(csvText);
+      const hasCoordinates = csvCoords !== null;
+      const coords: [number, number] = csvCoords ?? [0, 0];
 
       const customRegion: HotspotRegion = {
         id: `csv_${Date.now()}`,
         name: customDatasetName || 'User CSV Dataset',
-        countryOrOcean: 'Uploaded Time Series',
-        coordinates: [0, 0],
+        countryOrOcean: hasCoordinates
+          ? `Station (${coords[0] >= 0 ? coords[0].toFixed(2) + '°N' : Math.abs(coords[0]).toFixed(2) + '°S'}, ${coords[1] >= 0 ? coords[1].toFixed(2) + '°E' : Math.abs(coords[1]).toFixed(2) + '°W'})`
+          : 'Uploaded Time Series',
+        coordinates: coords,
+        hasCoordinates,
         category: 'Agricultural',
         description: 'User-provided custom environmental observations',
         keyPhenomenon: 'Custom Time Series Significance Test',
         primaryVariable: selectedVarId,
       };
 
-      onAnalyzeCustomData(customRegion, targetVar, processed, false);
+      onAnalyzeCustomData(customRegion, targetVar, processed, false, csvText);
     } catch (err: any) {
       setCsvError(err.message || 'Failed to parse CSV');
     }
@@ -394,7 +421,7 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
               className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <p className="text-[11px] text-slate-500 mt-1">
-              Format: Date (YYYY-MM or YYYY-MM-DD), Value. Comma, semicolon, or tab delimited.
+              Format: Date (YYYY-MM or YYYY-MM-DD), Value (optional Latitude, Longitude columns). Comma, semicolon, or tab delimited.
             </p>
           </div>
 

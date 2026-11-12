@@ -44,14 +44,36 @@ export const EarthMap: React.FC<EarthMapProps> = ({
     return L.tileLayer(tileLayers[layerKey], { maxZoom: 18 });
   };
 
+  const placeCustomPin = (map: L.Map, lat: number, lon: number) => {
+    if (activePinRef.current) {
+      activePinRef.current.setLatLng([lat, lon]);
+      return;
+    }
+    const pinIcon = L.divIcon({
+      className: 'custom-pin-icon',
+      html: `<div class="relative flex items-center justify-center">
+              <span class="animate-ping absolute inline-flex h-6 w-6 rounded-full bg-cyan-400 opacity-75"></span>
+              <div class="relative w-4 h-4 rounded-full bg-cyan-400 border-2 border-slate-900 shadow-md"></div>
+            </div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    });
+    activePinRef.current = L.marker([lat, lon], { icon: pinIcon }).addTo(map);
+  };
+
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    // Initialize Map
+    const hasCoords = selectedRegion.hasCoordinates !== false;
+    const isCustomPin =
+      hasCoords &&
+      (selectedRegion.id.startsWith('coord_') || selectedRegion.id.startsWith('csv_'));
+
+    // Initialize Map at [0,0] if CSV has no coordinates, or centered on custom coordinates
     if (!mapInstanceRef.current) {
       const map = L.map(mapContainerRef.current, {
-        center: [20, 0],
-        zoom: 2,
+        center: !hasCoords ? [0, 0] : isCustomPin ? selectedRegion.coordinates : [20, 0],
+        zoom: isCustomPin ? 5 : 2,
         minZoom: 2,
         maxZoom: 16,
         zoomControl: false,
@@ -72,23 +94,7 @@ export const EarthMap: React.FC<EarthMapProps> = ({
         const roundedLon = +normalizedLon.toFixed(3);
 
         setClickCoords({ lat: roundedLat, lon: roundedLon });
-
-        // Update custom pin
-        if (activePinRef.current) {
-          activePinRef.current.setLatLng([lat, normalizedLon]);
-        } else {
-          const pinIcon = L.divIcon({
-            className: 'custom-pin-icon',
-            html: `<div class="relative flex items-center justify-center">
-                    <span class="animate-ping absolute inline-flex h-6 w-6 rounded-full bg-cyan-400 opacity-75"></span>
-                    <div class="relative w-4 h-4 rounded-full bg-cyan-400 border-2 border-slate-900 shadow-md"></div>
-                  </div>`,
-            iconSize: [24, 24],
-            iconAnchor: [12, 12],
-          });
-          activePinRef.current = L.marker([lat, normalizedLon], { icon: pinIcon }).addTo(map);
-        }
-
+        placeCustomPin(map, lat, normalizedLon);
         onSelectCustomCoordinates(roundedLat, roundedLon);
       });
 
@@ -146,17 +152,40 @@ export const EarthMap: React.FC<EarthMapProps> = ({
     });
 
     return () => {
-      // Keep map alive across standard re-renders
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+      tileLayerRef.current = null;
+      activePinRef.current = null;
+      markersRef.current = {};
     };
   }, []);
 
-  // Update map view when selected region changes
+  // Update map view and custom pin when selected region changes
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
 
+    const hasCoords = selectedRegion.hasCoordinates !== false;
+    const isCustomPin =
+      hasCoords &&
+      (selectedRegion.id.startsWith('coord_') || selectedRegion.id.startsWith('csv_'));
+
+    if (isCustomPin) {
+      placeCustomPin(map, selectedRegion.coordinates[0], selectedRegion.coordinates[1]);
+    } else if (activePinRef.current) {
+      map.removeLayer(activePinRef.current);
+      activePinRef.current = null;
+    }
+
+    if (!hasCoords) {
+      map.setView([0, 0], 2);
+      return;
+    }
+
     // Center map smoothly on selected region
-    map.flyTo(selectedRegion.coordinates, Math.max(map.getZoom(), 4), {
+    map.flyTo(selectedRegion.coordinates, Math.max(map.getZoom(), isCustomPin ? 5 : 4), {
       duration: 1.2,
       easeLinearity: 0.25,
     });
@@ -223,7 +252,9 @@ export const EarthMap: React.FC<EarthMapProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-400 line-clamp-1 mt-0.5 font-mono">
-              {selectedRegion.coordinates[0].toFixed(2)}°, {selectedRegion.coordinates[1].toFixed(2)}° • {selectedRegion.keyPhenomenon}
+              {selectedRegion.hasCoordinates === false
+                ? `No coordinates provided • ${selectedRegion.keyPhenomenon}`
+                : `${selectedRegion.coordinates[0].toFixed(2)}°, ${selectedRegion.coordinates[1].toFixed(2)}° • ${selectedRegion.keyPhenomenon}`}
             </p>
           </div>
         </div>
