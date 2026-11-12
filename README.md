@@ -16,7 +16,7 @@
 - **3. Live NASA POWER API Integration**: Direct live queries to NASA Langley Research Center's `https://power.larc.nasa.gov` API, retrieving multi-decade monthly satellite and reanalysis observations on the fly with graceful offline fallback.
 - **4. Deseasonalization & Climatology Normalization**: Removes regular annual cycles by subtracting 30-year monthly baselines ($`A_{y,m} = X_{y,m} - \bar{X}_m`$) to reveal underlying climate trajectories that seasonal swings otherwise conceal.
 - **5. Rigorous Statistical Engine**:
-  - **Mann-Kendall Non-Parametric Trend Test** ($`S`$, $`\operatorname{Var}(S)`$, standard normal $`Z`$, Kendall's Tau $`\tau`$, and two-tailed $`p`$-value).
+  - **Mann-Kendall Non-Parametric Trend Test** ($`S`$, $`\text{Var}(S)`$, standard normal $`Z`$, Kendall's Tau $`\tau`$, and two-tailed $`p`$-value).
   - **Theil-Sen Robust Median Slope Estimator** (resistant to extreme weather outliers).
   - **Ordinary Least Squares (OLS)** linear regression ($`m`$, intercept, $`R^2`$, standard error).
   - **Student's t-test** ($`t`$-statistic and $`p`$-value).
@@ -75,18 +75,18 @@ A_{y, m} = X_{y, m} - \bar{X}_m
 Recommended by the World Meteorological Organization (WMO) and NASA for environmental time-series because it does not assume normal distributions and resists extreme outliers:
 
 ```math
-S = \sum_{k=1}^{n-1} \sum_{j=k+1}^{n} \operatorname{sgn}(y_j - y_k)
+S = \sum_{k=1}^{n-1} \sum_{j=k+1}^{n} \text{sgn}(y_j - y_k)
 ```
 
 ```math
-\operatorname{Var}(S) = \frac{n(n-1)(2n+5) - \sum_{i=1}^{g} t_i(t_i-1)(2t_i+5)}{18}
+\text{Var}(S) = \frac{n(n-1)(2n+5) - \sum_{i=1}^{g} t_i(t_i-1)(2t_i+5)}{18}
 ```
 
 ```math
 Z = \begin{cases}
-\dfrac{S - 1}{\sqrt{\operatorname{Var}(S)}} & \text{if } S > 0 \\
+\dfrac{S - 1}{\sqrt{\text{Var}(S)}} & \text{if } S > 0 \\
 0 & \text{if } S = 0 \\
-\dfrac{S + 1}{\sqrt{\operatorname{Var}(S)}} & \text{if } S < 0
+\dfrac{S + 1}{\sqrt{\text{Var}(S)}} & \text{if } S < 0
 \end{cases}
 ```
 
@@ -98,15 +98,15 @@ p = 2 \cdot \left(1 - \Phi(|Z|)\right)
 Calculates the median of all pairwise slopes across $`N`$ observations:
 
 ```math
-Q_{\text{med}} = \operatorname{median} \left\{ \frac{y_j - y_i}{t_j - t_i} \right\} \quad \text{for } 1 \le i < j \le n
+Q_{\text{med}} = \text{median} \left\{ \frac{y_j - y_i}{t_j - t_i} \right\} \quad \text{for } 1 \le i < j \le n
 ```
 
 ### 4. Significance Classification
-- **$`p < 0.001`$ (`***`)**: Extremely Significant — Less than 0.1% chance of coincidental weather noise.
-- **$`p < 0.01`$ (`**`)**: Highly Significant — Very strong empirical certainty.
-- **$`p < 0.05`$ (`*`)**: Statistically Significant — Standard scientific threshold for hypothesis rejection ($`H_0`$: no trend).
-- **$`p < 0.10`$ (`†`)**: Marginally Significant — Emerging trend, needs longer baseline.
-- **$`p \ge 0.10`$ (`n.s.`)**: Not Significant — Variations remain within natural climate variability.
+- $`p < 0.001`$ (**`***`**): **Extremely Significant** — Less than 0.1% chance of coincidental weather noise.
+- $`p < 0.01`$ (**`**`**): **Highly Significant** — Very strong empirical certainty.
+- $`p < 0.05`$ (**`*`**): **Statistically Significant** — Standard scientific threshold for hypothesis rejection ($`H_0`$: no trend).
+- $`p < 0.10`$ (**`†`**): **Marginally Significant** — Emerging trend, needs longer baseline.
+- $`p \ge 0.10`$ (**`n.s.`**): **Not Significant** — Variations remain within natural climate variability.
 
 ---
 
