@@ -31,19 +31,14 @@ export const DataExportModal: React.FC<DataExportModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Generate CSV Text
+  // Generate clean RFC-style CSV without # comment headers so it re-imports cleanly
   const generateCsv = () => {
-    let csv = `# NASA TerraTrends Earth Science Analysis Export\n`;
-    csv += `# Region: ${region.name} (${region.coordinates[0].toFixed(2)}N, ${region.coordinates[1].toFixed(2)}E)\n`;
-    csv += `# Variable: ${variable.name} (${variable.unit})\n`;
-    csv += `# Missions: ${variable.missions.join(', ')}\n`;
-    csv += `# Mann-Kendall Z: ${stats.mkZ}, Tau: ${stats.mkTau}, p-value: ${stats.mkPValue}\n`;
-    csv += `# Sen's Slope: ${stats.sensSlopePerDecade} ${variable.unit}/decade, OLS Slope: ${stats.slopePerDecade} ${variable.unit}/decade\n`;
-    csv += `# Significance: ${stats.significanceLevel} (${stats.significanceStars})\n`;
-    csv += `Date,Year,Month,Raw_${variable.id},MovingAvg_12Mo,Deseasonalized_Anomaly,Trend_OLS,CI95_Lower,CI95_Upper\n`;
+    const lat = region.coordinates[0].toFixed(4);
+    const lon = region.coordinates[1].toFixed(4);
+    let csv = `Date,Year,Month,Latitude,Longitude,Raw_${variable.id},MovingAvg_12Mo,Deseasonalized_Anomaly,Trend_OLS,CI95_Lower,CI95_Upper\n`;
 
     points.forEach(p => {
-      csv += `${p.date},${p.year},${p.month},${p.raw},${p.movingAvg ?? ''},${p.anomaly ?? ''},${p.trend ?? ''},${p.ciLower ?? ''},${p.ciUpper ?? ''}\n`;
+      csv += `${p.date},${p.year},${p.month},${lat},${lon},${p.raw},${p.movingAvg ?? ''},${p.anomaly ?? ''},${p.trend ?? ''},${p.ciLower ?? ''},${p.ciUpper ?? ''}\n`;
     });
 
     return csv;
@@ -55,7 +50,7 @@ export const DataExportModal: React.FC<DataExportModalProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `NASA_TerraTrends_${variable.id}_${region.name.replace(/\s+/g, '_')}_${stats.startDate}_${stats.endDate}.csv`;
+    link.download = `GEOIRIS_${variable.id}_${region.name.replace(/\s+/g, '_')}_${stats.startDate}_${stats.endDate}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -63,7 +58,7 @@ export const DataExportModal: React.FC<DataExportModalProps> = ({
   const handleDownloadJson = () => {
     const jsonPayload = {
       metadata: {
-        tool: 'NASA TerraTrends Earth Science Change Detective',
+        tool: 'GEOIRIS Earth Science Change Detective',
         event: '2026 NASA Space Apps Challenge',
         exportDate: new Date().toISOString(),
         region: {
@@ -88,12 +83,12 @@ export const DataExportModal: React.FC<DataExportModalProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `NASA_TerraTrends_${variable.id}_${region.name.replace(/\s+/g, '_')}.json`;
+    link.download = `GEOIRIS_${variable.id}_${region.name.replace(/\s+/g, '_')}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
-  const citationText = `NASA TerraTrends (2026). Decadal Trend and Significance Analysis of ${variable.name} in ${region.name} (${stats.startDate} to ${stats.endDate}). NASA Space Apps Challenge. Based on ${variable.missions.join(', ')} observations.`;
+  const citationText = `GEOIRIS (2026). Decadal Trend and Significance Analysis of ${variable.name} in ${region.name} (${stats.startDate} to ${stats.endDate}). NASA Space Apps Challenge. Based on ${variable.missions.join(', ')} observations.`;
 
   const handleCopyCitation = () => {
     navigator.clipboard.writeText(citationText);

@@ -29,6 +29,7 @@ export interface HotspotRegion {
   name: string;
   countryOrOcean: string;
   coordinates: [number, number]; // [lat, lon]
+  hasCoordinates?: boolean; // False when uploaded CSV lacks lat/lon columns
   category: 'Polar' | 'Tropical Rainforest' | 'Arid / Desert' | 'Agricultural' | 'Urban' | 'Marine' | 'High Altitude';
   description: string;
   keyPhenomenon: string;

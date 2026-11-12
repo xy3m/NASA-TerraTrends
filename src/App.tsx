@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   EarthVariable, 
   HotspotRegion, 
@@ -9,11 +9,13 @@ import {
 import { 
   EARTH_VARIABLES, 
   HOTSPOT_REGIONS, 
+  NASA_POWER_PARAM_MAP,
   generateCuratedTimeSeries, 
-  fetchLiveNasaPowerData 
+  fetchLiveNasaPowerData,
+  parseCustomCsv
 } from './services/nasaData';
-import { analyzeTrend } from './services/statistics';
-import { Navbar, AppMode } from './components/Navbar';
+import { analyzeTrend, processTimeSeries } from './services/statistics';
+import { Navbar, AppMode, DataFeedSource } from './components/Navbar';
 import { EarthMap } from './components/EarthMap';
 import { VariableSelector } from './components/VariableSelector';
 import { TimeSeriesChart } from './components/TimeSeriesChart';
@@ -31,7 +33,8 @@ import {
   ArrowRight, 
   Satellite, 
   Database,
-  ExternalLink 
+  ExternalLink,
+  BookOpen
 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -44,7 +47,12 @@ export const App: React.FC = () => {
 
   // Custom data overrides (from live API or CSV upload)
   const [customPoints, setCustomPoints] = useState<TimeSeriesPoint[] | null>(null);
+  const [uploadedCsvText, setUploadedCsvText] = useState<string | null>(null);
   const [isLiveNasa, setIsLiveNasa] = useState<boolean>(false);
+  const liveQueryIdRef = useRef<number>(0);
+  const section1Ref = useRef<HTMLElement | null>(null);
+  const section2Ref = useRef<HTMLElement | null>(null);
+  const scrollTargetRef = useRef<'section1' | 'section2' | null>(null);
 
   // Export Modal state
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
@@ -70,21 +78,49 @@ export const App: React.FC = () => {
     );
   }, [activePoints, selectedVariable, selectedRegion]);
 
+  // Fetch live NASA POWER data (or calibrated fallback) for coordinates with race guard
+  const loadCoordinateData = async (lat: number, lon: number, variableId: VariableId) => {
+    const queryId = ++liveQueryIdRef.current;
+    const { points, isLiveNasa: isLive } = await fetchLiveNasaPowerData(lat, lon, variableId);
+    if (queryId !== liveQueryIdRef.current) return;
+    setCustomPoints(points);
+    setIsLiveNasa(isLive);
+  };
+
+  // Fetch live NASA POWER data on initial load for the default hotspot if supported
+  useEffect(() => {
+    if (NASA_POWER_PARAM_MAP[selectedVariable.id]) {
+      loadCoordinateData(
+        selectedRegion.coordinates[0],
+        selectedRegion.coordinates[1],
+        selectedVariable.id
+      );
+    }
+  }, []);
+
   // Handle region selection from map or list
   const handleSelectRegion = (region: HotspotRegion) => {
+    liveQueryIdRef.current++;
     setSelectedRegion(region);
     setCustomPoints(null);
+    setUploadedCsvText(null);
     setIsLiveNasa(false);
 
     // Auto-select the region's primary variable if available
     const primary = EARTH_VARIABLES.find(v => v.id === region.primaryVariable);
+    const targetVar = primary || selectedVariable;
     if (primary) {
       setSelectedVariable(primary);
+    }
+
+    if (NASA_POWER_PARAM_MAP[targetVar.id]) {
+      loadCoordinateData(region.coordinates[0], region.coordinates[1], targetVar.id);
     }
   };
 
   // Handle map click anywhere on Earth
   const handleSelectCustomCoordinates = async (lat: number, lon: number) => {
+    setUploadedCsvText(null);
     const customRegion: HotspotRegion = {
       id: `coord_${lat.toFixed(2)}_${lon.toFixed(2)}`,
       name: `Earth Point (${lat >= 0 ? lat.toFixed(2) + '°N' : Math.abs(lat).toFixed(2) + '°S'}, ${lon >= 0 ? lon.toFixed(2) + '°E' : Math.abs(lon).toFixed(2) + '°W'})`,
@@ -97,11 +133,7 @@ export const App: React.FC = () => {
     };
 
     setSelectedRegion(customRegion);
-
-    // Fetch live data from NASA POWER API
-    const { points, isLiveNasa: isLive } = await fetchLiveNasaPowerData(lat, lon, selectedVariable.id);
-    setCustomPoints(points);
-    setIsLiveNasa(isLive);
+    await loadCoordinateData(lat, lon, selectedVariable.id);
   };
 
   // Handle Custom Data Studio analysis callback
@@ -109,24 +141,45 @@ export const App: React.FC = () => {
     region: HotspotRegion,
     variable: EarthVariable,
     points: TimeSeriesPoint[],
-    isLive: boolean
+    isLive: boolean,
+    rawCsvText?: string
   ) => {
+    liveQueryIdRef.current++;
+    scrollTargetRef.current = region.hasCoordinates === false ? 'section2' : 'section1';
     setSelectedRegion(region);
     setSelectedVariable(variable);
     setCustomPoints(points);
+    setUploadedCsvText(rawCsvText ?? null);
     setIsLiveNasa(isLive);
     setCurrentMode('explorer'); // Navigate back to explorer to inspect
   };
 
+  useEffect(() => {
+    if (currentMode !== 'explorer' || !scrollTargetRef.current) return;
+    const target = scrollTargetRef.current;
+    scrollTargetRef.current = null;
+
+    requestAnimationFrame(() => {
+      const targetEl = target === 'section2' ? section2Ref.current : section1Ref.current;
+      targetEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [currentMode, selectedRegion]);
+
+  const dataFeedSource: DataFeedSource = isLiveNasa
+    ? 'live'
+    : selectedRegion.id.startsWith('csv_')
+      ? 'csv'
+      : 'calibrated';
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-slate-950">
+    <div className="min-h-screen bg-[#030915] text-white flex flex-col selection:bg-[#3EC7F2] selection:text-[#030915]">
       
       {/* Top Navigation */}
       <Navbar
         currentMode={currentMode}
         onSelectMode={setCurrentMode}
         onOpenExport={() => setIsExportOpen(true)}
-        isLiveNasa={isLiveNasa}
+        dataFeedSource={dataFeedSource}
         selectedRegionName={selectedRegion.name}
       />
 
@@ -138,11 +191,11 @@ export const App: React.FC = () => {
           <div className="space-y-8 animate-fadeIn">
             
             {/* Mission Hero Banner */}
-            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950/40 to-slate-900 border border-slate-800 p-6 sm:p-8 shadow-2xl">
-              <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 rounded-full bg-blue-600/10 blur-3xl pointer-events-none"></div>
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#030915] via-[#071A2F] to-[#030915] border border-[#3EC7F2]/20 p-6 sm:p-8 shadow-2xl">
+              <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 rounded-full bg-[#3EC7F2]/10 blur-3xl pointer-events-none"></div>
               <div className="relative z-10 max-w-3xl space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-600 text-white shadow-md shadow-blue-600/20 flex items-center space-x-1.5">
+                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#3EC7F2] text-[#030915] shadow-md shadow-[#3EC7F2]/20 flex items-center space-x-1.5">
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>NASA Earth Science Challenge</span>
                   </span>
@@ -170,8 +223,8 @@ export const App: React.FC = () => {
                       onClick={() => handleSelectRegion(r)}
                       className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
                         selectedRegion.id === r.id
-                          ? 'bg-blue-600 text-white font-bold shadow-sm'
-                          : 'bg-slate-950/80 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                          ? 'bg-[#3EC7F2] text-[#030915] font-bold shadow-sm shadow-[#3EC7F2]/25'
+                          : 'bg-[#030915]/80 hover:bg-slate-800 text-slate-300 border border-slate-800'
                       }`}
                     >
                       {r.name.split(',')[0]}
@@ -182,7 +235,7 @@ export const App: React.FC = () => {
             </div>
 
             {/* Section 1: Global Interactive Map */}
-            <section className="space-y-3">
+            <section ref={section1Ref} className="space-y-3 scroll-mt-24">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-white flex items-center space-x-2">
@@ -203,22 +256,51 @@ export const App: React.FC = () => {
             </section>
 
             {/* Section 2: Earth Science Variable Selector */}
-            <section className="space-y-3">
-              <div>
-                <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-                  <Satellite className="w-5 h-5 text-blue-400" />
-                  <span>2. Select Earth Science Variable & Mission</span>
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Choose from satellite-measured parameters and reanalysis models to identify directional trends
-                </p>
+            <section ref={section2Ref} className="space-y-3 scroll-mt-24">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                    <Satellite className="w-5 h-5 text-blue-400" />
+                    <span>2. Select Earth Science Variable & Mission</span>
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Choose from satellite-measured parameters and reanalysis models to identify directional trends.{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentMode('encyclopedia');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="inline-flex items-center space-x-1 text-[#3EC7F2] hover:text-cyan-300 underline underline-offset-2 font-medium"
+                    >
+                      <BookOpen className="w-3 h-3" />
+                      <span>Visit the Encyclopedia tab</span>
+                    </button>{' '}
+                    to learn more about the variables, the missions and the models.
+                  </p>
+                </div>
               </div>
 
               <VariableSelector
                 selectedVariableId={selectedVariable.id}
                 onSelectVariable={(v) => {
                   setSelectedVariable(v);
-                  setCustomPoints(null);
+                  if (selectedRegion.id.startsWith('csv_') && uploadedCsvText) {
+                    try {
+                      const rawPoints = parseCustomCsv(uploadedCsvText, v.id);
+                      setCustomPoints(processTimeSeries(rawPoints));
+                    } catch {
+                      // Keep existing points if re-parsing fails
+                    }
+                  } else if (!selectedRegion.id.startsWith('csv_')) {
+                    liveQueryIdRef.current++;
+                    setCustomPoints(null);
+                    setIsLiveNasa(false);
+                    if (NASA_POWER_PARAM_MAP[v.id]) {
+                      const [lat, lon] = selectedRegion.coordinates;
+                      loadCoordinateData(lat, lon, v.id);
+                    }
+                  }
                 }}
                 recommendedVariableId={selectedRegion.primaryVariable}
               />
@@ -295,7 +377,10 @@ export const App: React.FC = () => {
         {/* MODE 5: CUSTOM DATA STUDIO & API */}
         {currentMode === 'upload' && (
           <div className="animate-fadeIn">
-            <CustomDataUploader onAnalyzeCustomData={handleAnalyzeCustomData} />
+            <CustomDataUploader
+              initialCoordinates={selectedRegion.coordinates}
+              onAnalyzeCustomData={handleAnalyzeCustomData}
+            />
           </div>
         )}
 
@@ -312,17 +397,19 @@ export const App: React.FC = () => {
       />
 
       {/* Footer */}
-      <footer className="mt-12 bg-slate-950 border-t border-slate-900 py-8 px-4 text-xs text-slate-400">
+      <footer className="mt-12 bg-[#030915] border-t border-slate-900 py-8 px-4 text-xs text-slate-400">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-1.5 font-bold text-white">
-              <Globe2 className="w-4 h-4 text-cyan-400" />
-              <span>NASA TerraTrends</span>
+            <div className="flex items-center space-x-1.5 font-bold tracking-wider">
+              <Globe2 className="w-4 h-4 text-[#3EC7F2]" />
+              <span>
+                <span className="text-white">GEO</span><span className="text-[#3EC7F2]">IRIS</span>
+              </span>
             </div>
             <span>•</span>
             <span>2026 NASA Space Apps Challenge</span>
             <span>•</span>
-            <span className="text-cyan-400">Advanced Earth Science & Software</span>
+            <span className="text-[#3EC7F2]">Advanced Earth Science & Software</span>
           </div>
 
           <div className="flex items-center space-x-4 text-slate-400">
@@ -330,7 +417,7 @@ export const App: React.FC = () => {
             <span>•</span>
             <button
               onClick={() => setIsExportOpen(true)}
-              className="text-cyan-400 hover:text-cyan-300 underline"
+              className="text-[#3EC7F2] hover:text-cyan-300 underline"
             >
               Export Dossier
             </button>
