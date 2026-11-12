@@ -344,21 +344,6 @@ export function generateCuratedTimeSeries(region: HotspotRegion, variable: Earth
     if (variable.id === 'soil_moist') value = Math.max(0.02, Math.min(0.55, value));
     if (variable.id === 'evapo') value = Math.max(2, value);
     if (variable.id === 'ozone') value = Math.max(10, Math.min(80, value));
-    if (variable.id === 'pressure') value = Math.max(50, Math.min(108, value));
-    if (variable.id === 'humidity') value = Math.max(2, Math.min(100, value));
-    if (variable.id === 'specific_humidity') value = Math.max(0.1, Math.min(28, value));
-    if (variable.id === 'wind_speed') value = Math.max(0.1, Math.min(45, value));
-    if (variable.id === 'radiation_sw') value = Math.max(0, Math.min(450, value));
-    if (variable.id === 'radiation_lw') value = Math.max(100, Math.min(520, value));
-    if (variable.id === 'albedo') value = Math.max(0.04, Math.min(0.95, value));
-    if (variable.id === 'snow_depth') value = Math.max(0, Math.min(350, value));
-    if (variable.id === 'snow_precip') value = Math.max(0, Math.min(300, value));
-    if (variable.id === 'ozone_total') value = Math.max(100, Math.min(550, value));
-    if (variable.id === 'soil_moist_top') value = Math.max(0.01, Math.min(0.99, value));
-    if (variable.id === 'soil_moist_prof') value = Math.max(0.02, Math.min(0.99, value));
-    if (variable.id === 'sst') value = Math.max(-2, Math.min(36, value));
-    if (variable.id === 'streamflow') value = Math.max(1, value);
-    if (variable.id === 'evi') value = Math.max(0.01, Math.min(0.98, value));
 
     const monthStr = currentMonth < 10 ? `0${currentMonth}` : `${currentMonth}`;
     rawPoints.push({

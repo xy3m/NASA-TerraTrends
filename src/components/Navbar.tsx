@@ -24,9 +24,16 @@ const DATA_FEED_META: Record<
     pulse: true,
     icon: '🔄',
   },
+  reanalysis: {
+    shortLabel: 'REANALYSIS',
+    label: 'NASA Model / Reanalysis',
+    colorClass: 'text-cyan-400',
+    pulse: true,
+    icon: '🔄',
+  },
   satellite: {
     shortLabel: 'SAT OBS',
-    label: 'Satellite Observation (MODIS/NOAA)',
+    label: 'Satellite Observation (MODIS/NOAA/USGS)',
     colorClass: 'text-emerald-400',
     pulse: true,
     icon: '🛰️',
