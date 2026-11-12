@@ -794,7 +794,8 @@ export async function fetchLiveNasaPowerData(
       throw new Error('Invalid NASA POWER payload format');
     }
 
-    const rawPoints: { date: string; value: number }[] = [];
+    const rawPoints: { date: string; value: number | null }[] = [];
+    let validCount = 0;
 
     // Keys are in format "YYYYMM" (e.g. "199501") or "199513" (13 is annual summary)
     for (const key of Object.keys(parameterData)) {
@@ -807,24 +808,30 @@ export async function fetchLiveNasaPowerData(
         // Exclude month 13 (annual mean)
         if (monthNum >= 1 && monthNum <= 12) {
           let val = parameterData[key];
-          // NASA fill value is -999
-          if (typeof val === 'number' && val > -900) {
-            // PRECTOTCORR, EVLAND, and PRECSNO are returned in mm/day; convert to mm/month
-            if (nasaParam === 'PRECTOTCORR' || nasaParam === 'EVLAND' || nasaParam === 'PRECSNO') {
-              const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
-              val = val * daysInMonth;
-            }
+          // NASA fill value is -999 (polar night / missing data): preserve explicit null slot
+          if (typeof val !== 'number' || !isFinite(val) || val <= -900) {
             rawPoints.push({
               date: `${yearStr}-${monthStr}`,
-              value: +val.toFixed(2),
+              value: null,
             });
+            continue;
           }
+          // PRECTOTCORR, EVLAND, and PRECSNO are returned in mm/day; convert to mm/month
+          if (nasaParam === 'PRECTOTCORR' || nasaParam === 'EVLAND' || nasaParam === 'PRECSNO') {
+            const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+            val = val * daysInMonth;
+          }
+          validCount++;
+          rawPoints.push({
+            date: `${yearStr}-${monthStr}`,
+            value: +val.toFixed(2),
+          });
         }
       }
     }
 
-    if (rawPoints.length < 24) {
-      throw new Error('Insufficient points returned from live NASA API');
+    if (validCount < 24) {
+      throw new Error('Insufficient valid points returned from live NASA API');
     }
 
     rawPoints.sort((a, b) => a.date.localeCompare(b.date));
@@ -832,7 +839,7 @@ export async function fetchLiveNasaPowerData(
     const result = {
       points: processTimeSeries(rawPoints),
       isLiveNasa: true,
-      statusMessage: `Successfully retrieved live NASA POWER (${nasaParam}) data!`,
+      statusMessage: `Successfully retrieved ${validCount} valid months (${rawPoints.length - validCount} missing/polar-night slots) of NASA POWER (${nasaParam})!`,
     };
     livePowerCache.set(cacheKey, {
       ...result,
@@ -857,7 +864,23 @@ const VARIABLE_CSV_KEYWORDS: Partial<Record<VariableId, string[]>> = {
   evapo: ['raw_evapo', 'evapo', 'evland', 'evptrns', 'evap', 'evapotranspiration'],
   aod: ['raw_aod', 'aod_55', 'aod', 'aerosol', 'haze'],
   lst_day: ['raw_lst_day', 'lst_day', 'lst', 'skin_temp', 'surface_temp', 'ts'],
-  ozone: ['raw_ozone', 'ozone', 'to3', 'o3'],
+  ozone: ['raw_ozone', 'ozone', 'o3_trop', 'o3'],
+  pressure: ['raw_pressure', 'pressure', 'ps', 'slp', 'baro'],
+  humidity: ['raw_humidity', 'humidity', 'rh2m', 'rel_humidity', 'rh'],
+  specific_humidity: ['raw_specific_humidity', 'specific_humidity', 'qv2m', 'spec_hum'],
+  wind_speed: ['raw_wind_speed', 'wind_speed', 'ws10m', 'wind', 'wspd'],
+  radiation_sw: ['raw_radiation_sw', 'radiation_sw', 'allsky_sfc_sw_dwn', 'sw_rad', 'insolation'],
+  radiation_lw: ['raw_radiation_lw', 'radiation_lw', 'allsky_sfc_lw_dwn', 'lw_rad'],
+  albedo: ['raw_albedo', 'albedo', 'allsky_srf_alb', 'reflectance'],
+  snow_depth: ['raw_snow_depth', 'snow_depth', 'snodp', 'snow'],
+  snow_precip: ['raw_snow_precip', 'snow_precip', 'precsno', 'snowfall'],
+  ozone_total: ['raw_ozone_total', 'ozone_total', 'to3', 'total_ozone'],
+  soil_moist_top: ['raw_soil_moist_top', 'soil_moist_top', 'gwettop', 'top_soil'],
+  soil_moist_prof: ['raw_soil_moist_prof', 'soil_moist_prof', 'gwetprof', 'prof_soil'],
+  sea_level: ['raw_sea_level', 'sea_level', 'gmsl', 'sla', 'msl'],
+  sst: ['raw_sst', 'sst', 'sea_surface_temp'],
+  streamflow: ['raw_streamflow', 'streamflow', 'discharge', 'runoff', 'flow'],
+  evi: ['raw_evi', 'evi', 'enhanced_veg'],
 };
 
 function splitCsvRow(line: string, sep: string): string[] {
@@ -1020,4 +1043,62 @@ export function parseCustomCsv(
   // Sort chronologically
   results.sort((a, b) => a.date.localeCompare(b.date));
   return results;
+}
+
+/**
+ * Parse uploaded JSON time series: accepts either Geo-Iris export JSON
+ * (`{ metadata, timeSeries: [{ date, raw }] }`) or a raw array of `{ date, value }`.
+ */
+export function parseCustomJson(jsonText: string): {
+  points: { date: string; value: number | null }[];
+  detectedVariable?: VariableId;
+  regionName?: string;
+  coordinates?: [number, number];
+} {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new Error('Uploaded file is not valid JSON.');
+  }
+
+  const rows: any[] = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed?.timeSeries)
+      ? parsed.timeSeries
+      : Array.isArray(parsed?.data)
+        ? parsed.data
+        : [];
+
+  if (rows.length < 5) {
+    throw new Error('JSON must contain at least 5 time-series records with date and value/raw fields.');
+  }
+
+  const points: { date: string; value: number | null }[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const rawDate = String(row.date ?? row.time ?? row.timestamp ?? '');
+    if (!rawDate) continue;
+    const candidate = row.raw !== undefined ? row.raw : (row.value !== undefined ? row.value : row.val);
+    const num = candidate === null || candidate === '' ? null : Number(candidate);
+    const dateNorm = /^\d{4}-\d{2}/.test(rawDate) ? rawDate.substring(0, 7) : rawDate;
+    points.push({
+      date: dateNorm,
+      value: num !== null && !isNaN(num) && isFinite(num) && num > -900 ? num : null,
+    });
+  }
+
+  const validCount = points.filter(p => p.value !== null).length;
+  if (validCount < 5) {
+    throw new Error('JSON contained fewer than 5 valid numerical observations.');
+  }
+
+  points.sort((a, b) => a.date.localeCompare(b.date));
+  const detectedVar = parsed?.metadata?.variable?.id as VariableId | undefined;
+  const regionName = parsed?.metadata?.region?.name as string | undefined;
+  const coords = Array.isArray(parsed?.metadata?.region?.coordinates)
+    ? (parsed.metadata.region.coordinates as [number, number])
+    : undefined;
+
+  return { points, detectedVariable: detectedVar, regionName, coordinates: coords };
 }

@@ -1,15 +1,12 @@
 import React from 'react';
-import { TrendAnalysisResult } from '../types/earthScience';
+import { PROVENANCE_META, TrendAnalysisResult } from '../types/earthScience';
 import { 
   TrendingUp, 
   TrendingDown, 
   Minus, 
   Percent, 
   Activity, 
-  Binary, 
-  Calculator, 
-  ShieldCheck, 
-  Compass 
+  Binary
 } from 'lucide-react';
 import { SignificanceBadge } from './SignificanceBadge';
 
@@ -173,23 +170,41 @@ export const StatsSummaryCard: React.FC<StatsSummaryCardProps> = ({ stats }) => 
       {/* Significance Banner & Plain English Verdict */}
       <div className="bg-slate-900/95 rounded-2xl border border-slate-800 p-4 sm:p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1.5 max-w-2xl">
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Scientific Verdict
             </span>
             <SignificanceBadge stats={stats} />
+            {stats.provenance && (
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border border-slate-700 bg-slate-950/90 ${PROVENANCE_META[stats.provenance].colorClass}`}
+              >
+                {PROVENANCE_META[stats.provenance].icon} {PROVENANCE_META[stats.provenance].label}
+              </span>
+            )}
           </div>
           <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-medium">
             {stats.plainEnglishVerdict}
           </p>
+          {stats.statusMessage && (
+            <p className="text-[11px] font-mono text-slate-400">
+              Source{stats.provenanceSource ? ` (${stats.provenanceSource})` : ''}: {stats.statusMessage}
+            </p>
+          )}
         </div>
 
         <div className="w-full md:w-auto p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs shrink-0 space-y-1">
           <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block">
             Sampling Integrity
           </span>
-          <div className="flex items-center justify-between md:justify-start space-x-4 text-slate-300 font-mono">
-            <span>N = <strong>{stats.sampleCount}</strong> obs</span>
+          <div className="flex items-center justify-between md:justify-start space-x-3 text-slate-300 font-mono">
+            <span>N = <strong>{stats.sampleCount}</strong> valid</span>
+            {(stats.missingCount ?? 0) > 0 && (
+              <>
+                <span>•</span>
+                <span className="text-amber-300">{stats.missingCount} missing</span>
+              </>
+            )}
             <span>•</span>
             <span>Monthly resolution</span>
           </div>

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-ssr/
+.git/
+.vercel/
+backend/
+tests/
+logs/
+*.log
+.env
+.env.*
+!.env.example

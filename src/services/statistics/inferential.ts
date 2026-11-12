@@ -1,4 +1,5 @@
 import { tCDF, fCDF, tQuantile } from './distributions';
+import type { TwoWayAnovaResult } from '../../types/earthScience';
 
 export interface TTestResult {
   t: number;
@@ -227,5 +228,120 @@ export function bootstrapCI(
     ciUpper,
     standardError,
     iterations: B,
+  };
+}
+
+/**
+ * Two-Way Factorial ANOVA (Fixed-Effects Unweighted Cell-Means / Type-I/III Balanced Solver)
+ * Tests Factor A, Factor B, and A x B interaction F-statistics across 2D level combinations.
+ */
+export function twoWayAnova(
+  observations: { value: number; levelA: string; levelB: string }[],
+  factorALabel = 'Factor A',
+  factorBLabel = 'Factor B'
+): TwoWayAnovaResult {
+  const clean = observations.filter(o => isFinite(o.value) && !isNaN(o.value));
+  if (clean.length < 6) {
+    throw new Error('Two-Way ANOVA requires at least 6 valid observations across factor cells.');
+  }
+
+  const levelsA = Array.from(new Set(clean.map(o => o.levelA))).sort();
+  const levelsB = Array.from(new Set(clean.map(o => o.levelB))).sort();
+  if (levelsA.length < 2 || levelsB.length < 2) {
+    throw new Error('Two-Way ANOVA requires at least 2 distinct levels in both Factor A and Factor B.');
+  }
+
+  const cells = new Map<string, number[]>();
+  for (const o of clean) {
+    const k = `${o.levelA}__||__${o.levelB}`;
+    if (!cells.has(k)) cells.set(k, []);
+    cells.get(k)!.push(o.value);
+  }
+
+  const grandMean = clean.reduce((s, o) => s + o.value, 0) / clean.length;
+
+  let ssWithin = 0;
+  let totalObs = 0;
+  const cellMeans: TwoWayAnovaResult['cellMeans'] = [];
+  const aMeans = new Map<string, { sum: number; n: number }>();
+  const bMeans = new Map<string, { sum: number; n: number }>();
+
+  for (const a of levelsA) aMeans.set(a, { sum: 0, n: 0 });
+  for (const b of levelsB) bMeans.set(b, { sum: 0, n: 0 });
+
+  for (const a of levelsA) {
+    for (const b of levelsB) {
+      const vals = cells.get(`${a}__||__${b}`) || [];
+      if (vals.length === 0) continue;
+      const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+      cellMeans.push({ levelA: a, levelB: b, mean, n: vals.length });
+      for (const v of vals) {
+        ssWithin += (v - mean) ** 2;
+        totalObs++;
+        aMeans.get(a)!.sum += v;
+        aMeans.get(a)!.n += 1;
+        bMeans.get(b)!.sum += v;
+        bMeans.get(b)!.n += 1;
+      }
+    }
+  }
+
+  let ssA = 0;
+  for (const { sum, n } of aMeans.values()) {
+    if (n > 0) ssA += n * (sum / n - grandMean) ** 2;
+  }
+
+  let ssB = 0;
+  for (const { sum, n } of bMeans.values()) {
+    if (n > 0) ssB += n * (sum / n - grandMean) ** 2;
+  }
+
+  let ssBetweenCells = 0;
+  for (const c of cellMeans) {
+    ssBetweenCells += c.n * (c.mean - grandMean) ** 2;
+  }
+  const ssAB = Math.max(0, ssBetweenCells - ssA - ssB);
+
+  const dfA = Math.max(1, levelsA.length - 1);
+  const dfB = Math.max(1, levelsB.length - 1);
+  const dfAB = Math.max(1, dfA * dfB);
+  const dfWithin = Math.max(1, totalObs - cellMeans.length);
+
+  const msA = ssA / dfA;
+  const msB = ssB / dfB;
+  const msAB = ssAB / dfAB;
+  const msWithin = ssWithin / dfWithin;
+
+  const fA = msWithin > 1e-12 ? msA / msWithin : 0;
+  const fB = msWithin > 1e-12 ? msB / msWithin : 0;
+  const fAB = msWithin > 1e-12 ? msAB / msWithin : 0;
+
+  return {
+    factorALabel,
+    factorBLabel,
+    factorA: {
+      f: fA,
+      df: dfA,
+      ss: ssA,
+      ms: msA,
+      pValue: Math.max(0, Math.min(1, 1 - fCDF(fA, dfA, dfWithin))),
+    },
+    factorB: {
+      f: fB,
+      df: dfB,
+      ss: ssB,
+      ms: msB,
+      pValue: Math.max(0, Math.min(1, 1 - fCDF(fB, dfB, dfWithin))),
+    },
+    interaction: {
+      f: fAB,
+      df: dfAB,
+      ss: ssAB,
+      ms: msAB,
+      pValue: Math.max(0, Math.min(1, 1 - fCDF(fAB, dfAB, dfWithin))),
+    },
+    within: { df: dfWithin, ss: ssWithin, ms: msWithin },
+    grandMean,
+    cellMeans,
   };
 }

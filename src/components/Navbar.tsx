@@ -8,10 +8,11 @@ import {
   FileText, 
   Radio,
   FlaskConical,
+  Cpu,
   Loader2
 } from 'lucide-react';
 
-export type AppMode = 'explorer' | 'detective' | 'contrast' | 'encyclopedia' | 'upload' | 'lab';
+export type AppMode = 'explorer' | 'detective' | 'contrast' | 'encyclopedia' | 'upload' | 'lab' | 'phase2';
 export type DataFeedSource = 'live' | 'calibrated' | 'csv' | 'satellite' | 'reanalysis';
 
 const DATA_FEED_META: Record<
@@ -190,6 +191,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <FlaskConical className="w-3.5 h-3.5" />
             <span>Statistical Lab</span>
+          </button>
+
+          <button
+            onClick={() => onSelectMode('phase2')}
+            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+              currentMode === 'phase2'
+                ? 'bg-gradient-to-r from-cyan-600 to-purple-600 text-white font-bold shadow-md shadow-cyan-600/30'
+                : 'text-slate-400 hover:text-cyan-300 hover:bg-slate-800/60'
+            }`}
+          >
+            <Cpu className="w-3.5 h-3.5" />
+            <span>Phase 2 Lab</span>
           </button>
         </nav>
 

@@ -1,9 +1,10 @@
-import { SeasonalMKResult, ChangePointResult } from '../../types/earthScience';
+import { SeasonalMKResult, ChangePointResult, GEVResult } from '../../types/earthScience';
 import { normalCdf, normalPValue } from './distributions';
 
 /**
  * Standard Seasonal Mann-Kendall test (Hirsch, Slack & Smith 1982)
- * Tests for monotonic trend across multiple seasons (e.g. 12 months)
+ * Includes exact centered detrended Hamed-Rao (1998) variance modification and
+ * true Yue et al. (2002) Trend-Free Pre-Whitening (TFPW).
  */
 export function seasonalMannKendall(
   values: number[],
@@ -25,6 +26,46 @@ export function seasonalMannKendall(
     };
   }
 
+  // Yue et al. (2002) Trend-Free Pre-Whitening (TFPW) per season before MK evaluation
+  let workingValues = values;
+  let tfpwR1: number | undefined;
+  if (method === 'tfpw') {
+    const whitened = [...values];
+    const r1Estimates: number[] = [];
+
+    for (let m = 0; m < seasonLength; m++) {
+      const seasonIndices: number[] = [];
+      const seasonVals: number[] = [];
+      for (let y = 0; y < nYears; y++) {
+        const idx = y * seasonLength + m;
+        if (idx < n && !isNaN(values[idx]) && isFinite(values[idx])) {
+          seasonIndices.push(idx);
+          seasonVals.push(values[idx]);
+        }
+      }
+      if (seasonVals.length < 4) continue;
+
+      // 1. Estimate season monotonic trend via Sen slope & detrend
+      const beta = senSlopeExact(seasonVals);
+      const detrended = seasonVals.map((v, k) => v - beta * k);
+      const r1 = lag1Autocorrelation(detrended);
+      r1Estimates.push(r1);
+
+      // 2. If lag-1 autocorrelation exceeds white-noise bound, pre-whiten & re-blend trend
+      if (Math.abs(r1) > 1.96 / Math.sqrt(detrended.length)) {
+        for (let k = 0; k < seasonVals.length; k++) {
+          const pwResidual = k === 0 ? detrended[0] : detrended[k] - r1 * detrended[k - 1];
+          whitened[seasonIndices[k]] = pwResidual + beta * k;
+        }
+      }
+    }
+
+    workingValues = whitened;
+    if (r1Estimates.length > 0) {
+      tfpwR1 = r1Estimates.reduce((s, v) => s + v, 0) / r1Estimates.length;
+    }
+  }
+
   let totalS = 0;
   let totalVarS = 0;
   let totalPairs = 0;
@@ -33,8 +74,8 @@ export function seasonalMannKendall(
     const seasonValues: number[] = [];
     for (let y = 0; y < nYears; y++) {
       const idx = y * seasonLength + m;
-      if (idx < n && !isNaN(values[idx]) && isFinite(values[idx])) {
-        seasonValues.push(values[idx]);
+      if (idx < n && !isNaN(workingValues[idx]) && isFinite(workingValues[idx])) {
+        seasonValues.push(workingValues[idx]);
       }
     }
 
@@ -69,45 +110,47 @@ export function seasonalMannKendall(
 
   let autoCorrection = 1.0;
 
-  // Hamed-Rao (1998) autocorrelation correction for variance
+  // Hamed & Rao (1998): centered detrended rank autocorrelation variance factor
   if (method === 'hamed_rao' && nYears > 3) {
-    const clean = values.filter(v => !isNaN(v) && isFinite(v));
-    const ranks = rankArray(clean);
-    let correctionSum = 0;
-    const maxLag = Math.min(10, Math.floor(nYears / 3));
+    // Form annual anomaly series so cross-year persistence isn't confounded by seasonal cycles
+    const clean = workingValues.filter(v => !isNaN(v) && isFinite(v));
+    const overallBeta = senSlopeExact(clean);
+    const detrended = clean.map((v, i) => v - overallBeta * i);
+    const ranks = rankArray(detrended);
+    const mLen = ranks.length;
+    if (mLen >= 6) {
+      const meanRank = ranks.reduce((a, b) => a + b, 0) / mLen;
+      const centered = ranks.map(r => r - meanRank);
+      const denom = centered.reduce((s, r) => s + r * r, 0);
 
-    for (let lag = 1; lag <= maxLag; lag++) {
-      let prod = 0;
-      let count = 0;
-      for (let i = 0; i < ranks.length - lag; i++) {
-        prod += ranks[i] * ranks[i + lag];
-        count++;
-      }
-      if (count > 0) {
-        const rho = prod / count;
-        if (Math.abs(rho) > 2 / Math.sqrt(ranks.length)) {
-          correctionSum += 2 * ((nYears - lag) / nYears) * rho;
+      if (denom > 1e-12) {
+        let correctionSum = 0;
+        const maxLag = Math.min(12, Math.floor(mLen / 4));
+        const crit = 1.96 / Math.sqrt(mLen);
+
+        for (let lag = 1; lag <= maxLag; lag++) {
+          let num = 0;
+          for (let i = 0; i < mLen - lag; i++) {
+            num += centered[i] * centered[i + lag];
+          }
+          const rho = num / denom;
+          if (Math.abs(rho) > crit) {
+            correctionSum +=
+              ((mLen - lag) * (mLen - lag - 1) * (mLen - lag - 2)) * rho;
+          }
         }
-      }
-    }
 
-    autoCorrection = Math.max(1.0, 1.0 + correctionSum);
-    totalVarS *= autoCorrection;
-  }
-
-  // TFPW: Trend-Free Pre-Whitening (Yue et al. 2002)
-  if (method === 'tfpw') {
-    const clean = values.filter(v => !isNaN(v) && isFinite(v));
-    if (clean.length > 3) {
-      const r1 = lag1Autocorrelation(clean);
-      if (Math.abs(r1) > 2 / Math.sqrt(clean.length)) {
-        autoCorrection = Math.max(0.5, Math.min(3.0, (1 + r1) / (1 - r1)));
+        const nOverNStar =
+          1 + (2 / (mLen * (mLen - 1) * (mLen - 2))) * correctionSum;
+        autoCorrection = Math.max(0.5, Math.min(6.0, nOverNStar));
         totalVarS *= autoCorrection;
       }
     }
+  } else if (method === 'tfpw' && tfpwR1 !== undefined) {
+    autoCorrection = tfpwR1;
   }
 
-  const sqrtVar = Math.sqrt(Math.max(1, totalVarS));
+  const sqrtVar = Math.sqrt(Math.max(1e-9, totalVarS));
   let z = 0;
   if (totalS > 0) z = (totalS - 1) / sqrtVar;
   else if (totalS < 0) z = (totalS + 1) / sqrtVar;
@@ -123,7 +166,12 @@ export function seasonalMannKendall(
     tau,
     method,
     seasonCount: seasonLength,
-    autocorrelationCorrection: autoCorrection !== 1.0 ? autoCorrection : undefined,
+    autocorrelationCorrection:
+      method === 'hamed_rao'
+        ? autoCorrection !== 1.0
+          ? autoCorrection
+          : undefined
+        : tfpwR1,
   };
 }
 
@@ -403,4 +451,119 @@ function lag1Autocorrelation(values: number[]): number {
     }
   }
   return den > 0 ? num / den : 0;
+}
+
+/**
+ * Hosking (1990) L-Moments Generalized Extreme Value (GEV) Block-Maxima Fit
+ * Fits location (mu), scale (sigma), and shape (xi = -kappa) with return levels.
+ */
+export function fitGEV(
+  values: number[],
+  blockSize = 12,
+  returnPeriods: number[] = [2, 5, 10, 20, 50, 100]
+): GEVResult {
+  const blockMaxima: number[] = [];
+  for (let i = 0; i + blockSize <= values.length; i += blockSize) {
+    const slice = values.slice(i, i + blockSize).filter(v => !isNaN(v) && isFinite(v));
+    if (slice.length >= Math.max(2, Math.floor(blockSize / 3))) {
+      blockMaxima.push(Math.max(...slice));
+    }
+  }
+
+  if (blockMaxima.length < 5) {
+    const clean = values.filter(v => !isNaN(v) && isFinite(v));
+    const step = Math.max(2, Math.floor(clean.length / 8));
+    blockMaxima.length = 0;
+    for (let i = 0; i + step <= clean.length; i += step) {
+      blockMaxima.push(Math.max(...clean.slice(i, i + step)));
+    }
+  }
+
+  const x = [...blockMaxima].sort((a, b) => a - b);
+  const n = x.length;
+  if (n < 3) {
+    return {
+      shapeXi: 0,
+      locationMu: x[0] ?? 0,
+      scaleSigma: 1,
+      family: 'Gumbel (light-tailed)',
+      blockMaxima,
+      returnLevels: returnPeriods.map(p => ({ period: p, level: x[0] ?? 0 })),
+    };
+  }
+
+  // Unbiased Probability Weighted Moments b0, b1, b2 (Hosking & Wallis 1997)
+  let b0 = 0;
+  let b1 = 0;
+  let b2 = 0;
+  for (let j = 0; j < n; j++) {
+    b0 += x[j];
+    b1 += (j / (n - 1)) * x[j];
+    b2 += ((j * (j - 1)) / ((n - 1) * (n - 2))) * x[j];
+  }
+  b0 /= n;
+  b1 /= n;
+  b2 /= n;
+
+  const l1 = b0;
+  const l2 = 2 * b1 - b0;
+  const l3 = 6 * b2 - 6 * b1 + b0;
+  const t3 = l2 > 1e-12 ? l3 / l2 : 0;
+
+  // Hosking rational approximation for GEV shape kappa (xi = -kappa)
+  const c = (2 / Math.max(1e-6, 3 + t3)) - Math.log(2) / Math.log(3);
+  const kappa = 7.859 * c + 2.9554 * c * c;
+  const xi = Math.max(-0.5, Math.min(0.5, -kappa));
+
+  // Gamma approximation via Lanczos or Euler constant fallback for kappa near 0
+  const gammaApprox = (z: number): number => {
+    const g = 7;
+    const p = [
+      0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+      771.32342877765313, -176.61502916214059, 12.507343278686905,
+      -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+    ];
+    let zc = z - 1;
+    let xSum = p[0];
+    for (let i = 1; i < g + 2; i++) xSum += p[i] / (zc + i);
+    const t = zc + g + 0.5;
+    return Math.sqrt(2 * Math.PI) * Math.pow(t, zc + 0.5) * Math.exp(-t) * xSum;
+  };
+
+  let scaleSigma: number;
+  let locationMu: number;
+  if (Math.abs(kappa) < 1e-4) {
+    scaleSigma = Math.max(1e-6, l2 / Math.log(2));
+    locationMu = l1 - 0.5772156649 * scaleSigma;
+  } else {
+    const g1 = gammaApprox(1 + kappa);
+    scaleSigma = Math.max(1e-6, (l2 * kappa) / ((1 - Math.pow(2, -kappa)) * g1));
+    locationMu = l1 - (scaleSigma * (1 - g1)) / kappa;
+  }
+
+  const returnLevels = returnPeriods.map(T => {
+    const p = 1 - 1 / Math.max(1.01, T);
+    const yP = -Math.log(p);
+    const level =
+      Math.abs(xi) < 1e-4
+        ? locationMu - scaleSigma * Math.log(yP)
+        : locationMu - (scaleSigma / xi) * (1 - Math.pow(yP, -xi));
+    return { period: T, level };
+  });
+
+  const family: GEVResult['family'] =
+    xi > 0.05
+      ? 'Frechet (heavy-tailed)'
+      : xi < -0.05
+        ? 'Weibull (bounded)'
+        : 'Gumbel (light-tailed)';
+
+  return {
+    shapeXi: xi,
+    locationMu,
+    scaleSigma,
+    family,
+    blockMaxima,
+    returnLevels,
+  };
 }

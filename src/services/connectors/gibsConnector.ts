@@ -79,6 +79,33 @@ export const GIBS_LAYERS: GIBSLayer[] = [
     format: 'png',
     maxZoom: 7,
   },
+  {
+    id: 'MODIS_Combined_Thermal_Anomalies_All',
+    name: 'MODIS Active Fires & Thermal Anomalies',
+    description: 'Combined Terra/Aqua MODIS daytime and nighttime active fire & thermal hotspot detections (FIRMS layer).',
+    defaultDate: '2024-01-15',
+    tileMatrixSet: 'GoogleMapsCompatible_Level6',
+    format: 'png',
+    maxZoom: 6,
+  },
+  {
+    id: 'MODIS_Aqua_Chlorophyll_A',
+    name: 'MODIS Aqua Ocean Chlorophyll-A',
+    description: 'Near-surface concentration of chlorophyll-a in ocean water (mg/m^3), tracking marine phytoplankton blooms and upwelling.',
+    defaultDate: 'default',
+    tileMatrixSet: 'GoogleMapsCompatible_Level7',
+    format: 'png',
+    maxZoom: 7,
+  },
+  {
+    id: 'MODIS_Terra_Aerosol',
+    name: 'MODIS Terra Aerosol Optical Depth',
+    description: 'Atmospheric Aerosol Optical Depth (AOD) at 550 nm showing smoke plumes, Saharan dust transport, and urban haze.',
+    defaultDate: '2024-01-15',
+    tileMatrixSet: 'GoogleMapsCompatible_Level6',
+    format: 'png',
+    maxZoom: 6,
+  },
 ];
 
 // ── GIBS tile URL builders ────────────────────────────────────────────

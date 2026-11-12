@@ -12,8 +12,15 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({ onSelectLayer, onOpaci
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0]
   );
+  const [useLatestDefault, setUseLatestDefault] = useState<boolean>(false);
   const [opacity, setOpacity] = useState<number>(0.75);
   const [isEnabled, setIsEnabled] = useState<boolean>(false);
+
+  const resolveDateSegment = (layerId: string, date: string, latestDefault = useLatestDefault) => {
+    const layer = GIBS_LAYERS.find(l => l.id === layerId);
+    if (latestDefault || layer?.defaultDate === 'default') return 'default';
+    return date;
+  };
 
   const handleToggle = () => {
     const next = !isEnabled;
@@ -30,23 +37,28 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({ onSelectLayer, onOpaci
     }
   };
 
-  const updateLayer = (layerId: string, date: string, nextOpacity = opacity) => {
-    const tileUrl = getGIBSTileTemplate(layerId, date);
+  const updateLayer = (layerId: string, date: string, nextOpacity = opacity, latestDefault = useLatestDefault) => {
+    const timeSegment = resolveDateSegment(layerId, date, latestDefault);
+    const tileUrl = getGIBSTileTemplate(layerId, timeSegment);
     const layer = GIBS_LAYERS.find(l => l.id === layerId);
     onSelectLayer?.(tileUrl, layer?.name, nextOpacity, layer?.maxZoom);
   };
 
   const handleLayerChange = (layerId: string) => {
     setSelectedLayerId(layerId);
+    const layer = GIBS_LAYERS.find(l => l.id === layerId);
+    const nextDefault = layer?.defaultDate === 'default' ? true : useLatestDefault;
+    if (layer?.defaultDate === 'default') setUseLatestDefault(true);
     if (isEnabled) {
-      updateLayer(layerId, selectedDate);
+      updateLayer(layerId, selectedDate, opacity, nextDefault);
     }
   };
 
   const handleDateChange = (date: string) => {
     setSelectedDate(date);
+    setUseLatestDefault(false);
     if (isEnabled && selectedLayerId) {
-      updateLayer(selectedLayerId, date);
+      updateLayer(selectedLayerId, date, opacity, false);
     }
   };
 
@@ -91,18 +103,39 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({ onSelectLayer, onOpaci
             </select>
           </div>
 
-          {/* Date Picker */}
+          {/* Date Picker + Latest Composite Fallback */}
           <div>
-            <label className="text-[10px] text-slate-400 uppercase tracking-wider flex items-center space-x-1 mb-1">
-              <Calendar className="w-3 h-3 text-cyan-400" />
-              <span>Observation Date</span>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] text-slate-400 uppercase tracking-wider flex items-center space-x-1">
+                <Calendar className="w-3 h-3 text-cyan-400" />
+                <span>Observation Date</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !useLatestDefault;
+                  setUseLatestDefault(next);
+                  if (isEnabled && selectedLayerId) {
+                    updateLayer(selectedLayerId, selectedDate, opacity, next);
+                  }
+                }}
+                className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
+                  useLatestDefault
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                }`}
+                title="Use GIBS latest rolling composite (`default`) for 8-day / multi-day products"
+              >
+                {useLatestDefault ? 'Latest (default)' : 'Use Latest'}
+              </button>
+            </div>
             <input
               type="date"
+              disabled={useLatestDefault}
               value={selectedDate}
               max={new Date().toISOString().split('T')[0]}
               onChange={e => handleDateChange(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyan-400"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyan-400 disabled:opacity-45"
             />
           </div>
 

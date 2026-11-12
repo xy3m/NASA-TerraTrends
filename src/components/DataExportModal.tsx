@@ -38,7 +38,7 @@ export const DataExportModal: React.FC<DataExportModalProps> = ({
     let csv = `Date,Year,Month,Latitude,Longitude,Raw_${variable.id},MovingAvg_12Mo,Deseasonalized_Anomaly,Trend_OLS,CI95_Lower,CI95_Upper\n`;
 
     points.forEach(p => {
-      csv += `${p.date},${p.year},${p.month},${lat},${lon},${p.raw},${p.movingAvg ?? ''},${p.anomaly ?? ''},${p.trend ?? ''},${p.ciLower ?? ''},${p.ciUpper ?? ''}\n`;
+      csv += `${p.date},${p.year},${p.month},${lat},${lon},${p.raw ?? ''},${p.movingAvg ?? ''},${p.anomaly ?? ''},${p.trend ?? ''},${p.ciLower ?? ''},${p.ciUpper ?? ''}\n`;
     });
 
     return csv;

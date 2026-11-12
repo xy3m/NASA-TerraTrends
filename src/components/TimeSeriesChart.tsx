@@ -11,7 +11,7 @@ import {
   Filler,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { EarthVariable, TimeSeriesPoint, TrendAnalysisResult } from '../types/earthScience';
+import { EarthVariable, PROVENANCE_META, TimeSeriesPoint, TrendAnalysisResult } from '../types/earthScience';
 import { 
   Eye, 
   EyeOff, 
@@ -116,6 +116,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       pointRadius: 1,
       pointHoverRadius: 4,
       tension: 0.2,
+      spanGaps: false,
       order: 3,
     });
   }
@@ -124,13 +125,14 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   if (showMovingAvg && !showAnomaly) {
     datasets.push({
       label: '12-Month Moving Average',
-      data: filteredPoints.map(p => p.movingAvg),
+      data: filteredPoints.map(p => p.movingAvg ?? null),
       borderColor: variable.color || '#3B82F6',
       backgroundColor: 'transparent',
       borderWidth: 2.2,
       pointRadius: 0,
       pointHoverRadius: 5,
       tension: 0.3,
+      spanGaps: false,
       order: 2,
     });
   }
@@ -139,7 +141,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   if (showAnomaly) {
     datasets.push({
       label: `Deseasonalized Anomaly (${variable.unit} from 30-yr monthly norm)`,
-      data: filteredPoints.map(p => p.anomaly),
+      data: filteredPoints.map(p => p.anomaly ?? null),
       borderColor: '#06B6D4', // cyan
       backgroundColor: 'rgba(6, 182, 212, 0.08)',
       fill: true,
@@ -147,6 +149,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       pointRadius: 1.5,
       pointHoverRadius: 5,
       tension: 0.25,
+      spanGaps: false,
       order: 2,
     });
   }
@@ -299,9 +302,25 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Missions: {variable.missions.join(' • ')} • Window: {visibleStart} to {visibleEnd} ({visibleCount} pts)
-          </p>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-0.5">
+            <span>
+              Missions: {variable.missions.join(' • ')} • Window: {visibleStart} to {visibleEnd} ({visibleCount} pts)
+            </span>
+            {stats.provenance && (
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border border-slate-700 bg-slate-950/90 ${PROVENANCE_META[stats.provenance].colorClass}`}
+                title={stats.statusMessage || PROVENANCE_META[stats.provenance].description}
+              >
+                {PROVENANCE_META[stats.provenance].icon}{' '}
+                {stats.provenanceSource || PROVENANCE_META[stats.provenance].label}
+              </span>
+            )}
+            {(stats.missingCount ?? 0) > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                {stats.missingCount} missing / polar-night slots preserved
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Action Buttons: Time Range & Image Download */}

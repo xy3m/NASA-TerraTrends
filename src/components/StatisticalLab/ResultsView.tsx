@@ -16,12 +16,14 @@ interface ResultsViewProps {
     secondaryColsData: { name: string; values: number[] }[];
   };
   results: LabResultsBundle;
+  onSendToPhase2?: () => void;
 }
 
 export const ResultsView: React.FC<ResultsViewProps> = ({
   config,
   data,
   results,
+  onSendToPhase2,
 }) => {
   const {
     descriptive,
@@ -33,9 +35,12 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
     correlationFDR,
     ttest,
     anova,
+    twoWayAnova,
     regression,
+    nonlinear,
     pca,
     trend,
+    gev,
     changePoint,
     cusumChangePoint,
     fdr,
@@ -75,13 +80,24 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
             Statistical Results for {data.primaryColName}
           </h3>
         </div>
-        <button
-          onClick={exportJSON}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
-        >
-          <Download className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Export Results (JSON)</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          {onSendToPhase2 && (
+            <button
+              onClick={onSendToPhase2}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-xs font-bold text-white shadow-md transition-all"
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Run SARIMA / Bayesian MCMC (Phase 2)</span>
+            </button>
+          )}
+          <button
+            onClick={exportJSON}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Export Results (JSON)</span>
+          </button>
+        </div>
       </div>
 
       {/* 1. DESCRIPTIVE STATS */}
@@ -467,24 +483,209 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
         </div>
       )}
 
+      {/* 4b. TWO-WAY FACTORIAL ANOVA */}
+      {config.type === 'two_way_anova' && twoWayAnova && (
+        <div className="bg-[#071326] border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold text-white">
+              Two-Way Factorial ANOVA ({twoWayAnova.factorALabel} × {twoWayAnova.factorBLabel})
+            </h4>
+            <span className="text-xs font-mono text-cyan-300">
+              Grand Mean = {twoWayAnova.grandMean.toFixed(3)}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-mono">
+              <thead>
+                <tr className="border-b border-slate-800 text-[10px] uppercase text-slate-400">
+                  <th className="py-2">Source of Variance</th>
+                  <th className="py-2">df</th>
+                  <th className="py-2">Sum of Squares</th>
+                  <th className="py-2">Mean Square</th>
+                  <th className="py-2">F-Statistic</th>
+                  <th className="py-2">p-Value</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                {[
+                  { name: `Main Effect: ${twoWayAnova.factorALabel}`, row: twoWayAnova.factorA },
+                  { name: `Main Effect: ${twoWayAnova.factorBLabel}`, row: twoWayAnova.factorB },
+                  { name: 'Interaction (Factor A × Factor B)', row: twoWayAnova.interaction },
+                ].map(item => (
+                  <tr key={item.name}>
+                    <td className="py-2 font-semibold text-white">{item.name}</td>
+                    <td className="py-2">{item.row.df}</td>
+                    <td className="py-2">{item.row.ss.toFixed(3)}</td>
+                    <td className="py-2">{item.row.ms.toFixed(3)}</td>
+                    <td className="py-2 text-cyan-300">{item.row.f.toFixed(3)}</td>
+                    <td className={`py-2 font-bold ${item.row.pValue < config.alpha ? 'text-emerald-400' : 'text-slate-400'}`}>
+                      {item.row.pValue.toFixed(4)}
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td className="py-2 text-slate-400">Within-Cell Residual</td>
+                  <td className="py-2">{twoWayAnova.within.df}</td>
+                  <td className="py-2">{twoWayAnova.within.ss.toFixed(3)}</td>
+                  <td className="py-2">{twoWayAnova.within.ms.toFixed(3)}</td>
+                  <td className="py-2 text-slate-500">—</td>
+                  <td className="py-2 text-slate-500">—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
+            {twoWayAnova.cellMeans.map((cell, idx) => (
+              <div key={idx} className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 font-mono text-[11px]">
+                <div className="text-slate-400 truncate">{cell.levelA} × {cell.levelB}</div>
+                <div className="text-sm font-bold text-white mt-0.5">{cell.mean.toFixed(3)}</div>
+                <div className="text-[10px] text-slate-500">n = {cell.n}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5b. NONLINEAR REGRESSION */}
+      {config.type === 'nonlinear' && nonlinear && (
+        <div className="space-y-6">
+          <div className="bg-[#071326] border border-slate-800 rounded-2xl p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Bounded Nonlinear Fit ({nonlinear.model})
+                </h4>
+                <p className="text-xs font-mono text-cyan-300 mt-1">{nonlinear.equation}</p>
+              </div>
+              <div className="flex items-center space-x-3 text-xs font-mono">
+                <span className="text-emerald-400 font-bold">R² = {nonlinear.rSquared.toFixed(4)}</span>
+                <span className="text-slate-400">RMSE = {nonlinear.rmse.toFixed(4)}</span>
+                <span className="text-slate-400">AIC = {nonlinear.aic.toFixed(1)}</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {nonlinear.params.map((p, idx) => (
+                <div key={idx} className="bg-slate-900 rounded-xl p-3 font-mono text-xs">
+                  <span className="text-[10px] text-slate-400 block">{nonlinear.paramLabels[idx]}</span>
+                  <span className="text-sm font-bold text-white">{p.toFixed(4)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DiagnosticPlots
+            residuals={nonlinear.residuals}
+            fitted={nonlinear.predictedValues}
+            values={data.primaryValues}
+          />
+        </div>
+      )}
+
       {/* 6. PCA */}
       {config.type === 'pca' && pca && (
         <div className="space-y-6">
-          <div className="bg-[#071326] border border-slate-800 rounded-2xl p-5 space-y-4">
-            <h4 className="text-xs font-bold text-white">Principal Components & Explained Variance</h4>
+          <div className="bg-[#071326] border border-slate-800 rounded-2xl p-5 space-y-5">
+            <h4 className="text-xs font-bold text-white">Principal Components Scree &amp; Explained Variance</h4>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {pca.componentLabels.map((label, idx) => (
                 <div key={idx} className="bg-slate-900 border border-slate-800 rounded-xl p-3 font-mono text-xs">
-                  <span className="text-cyan-400 font-bold">{label}</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-cyan-400 font-bold">{label}</span>
+                    <span className="text-[10px] text-slate-400">λ = {pca.eigenvalues[idx]?.toFixed(2)}</span>
+                  </div>
                   <div className="text-lg font-bold text-white mt-1">
                     {pca.explainedVariance[idx]?.toFixed(1)}%
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
+                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1.5">
+                    <div
+                      className="h-full bg-gradient-to-r from-cyan-400 to-purple-400"
+                      style={{ width: `${Math.min(100, pca.explainedVariance[idx] ?? 0)}%` }}
+                    />
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-1">
                     Cumulative: {pca.cumulativeVariance[idx]?.toFixed(1)}%
                   </div>
                 </div>
               ))}
             </div>
+
+            {/* Feature Factor Loadings Matrix */}
+            <div className="space-y-2 pt-2 border-t border-slate-800">
+              <h5 className="text-xs font-bold text-slate-200">Component Factor Loadings (Eigenvector Weights)</h5>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-[10px] uppercase text-slate-400">
+                      <th className="py-2">Variable</th>
+                      {pca.componentLabels.map(lbl => (
+                        <th key={lbl} className="py-2">{lbl}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {[data.primaryColName, ...data.secondaryColsData.map(c => c.name)].map((colName, rIdx) => (
+                      <tr key={colName}>
+                        <td className="py-2 font-semibold text-white">{colName}</td>
+                        {pca.componentLabels.map((_, cIdx) => {
+                          const w = pca.loadings[rIdx]?.[cIdx] ?? 0;
+                          return (
+                            <td
+                              key={cIdx}
+                              className={`py-2 font-bold ${
+                                Math.abs(w) >= 0.45 ? (w > 0 ? 'text-cyan-300' : 'text-rose-300') : 'text-slate-400'
+                              }`}
+                            >
+                              {w > 0 ? '+' : ''}{w.toFixed(3)}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* PC1 vs PC2 Scatter Biplot Projection (when >= 2 components exist) */}
+            {pca.componentLabels.length >= 2 && pca.scores.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <h5 className="text-xs font-bold text-slate-200">
+                  Observation Scores Projection (PC1 vs PC2)
+                </h5>
+                <ScatterMatrix
+                  columns={[
+                    { name: 'PC1', values: pca.scores.map(row => row[0] ?? 0) },
+                    { name: 'PC2', values: pca.scores.map(row => row[1] ?? 0) },
+                  ]}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 7b. EXTREME VALUE GEV */}
+      {config.type === 'extremes' && gev && (
+        <div className="bg-[#071326] border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 className="text-xs font-bold text-white">
+                Generalized Extreme Value (GEV) Block-Maxima Analysis ({gev.blockMaxima.length} Blocks)
+              </h4>
+              <p className="text-[11px] text-slate-400 mt-0.5">Tail Family: <strong className="text-rose-300">{gev.family}</strong></p>
+            </div>
+            <div className="flex items-center space-x-3 font-mono text-xs">
+              <span>ξ = <strong className="text-cyan-300">{gev.shapeXi.toFixed(3)}</strong></span>
+              <span>μ = <strong className="text-white">{gev.locationMu.toFixed(3)}</strong></span>
+              <span>σ = <strong className="text-white">{gev.scaleSigma.toFixed(3)}</strong></span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            {gev.returnLevels.map(rl => (
+              <div key={rl.period} className="bg-slate-900 border border-slate-800 rounded-xl p-3 font-mono text-xs">
+                <span className="text-[10px] text-slate-400 block">{rl.period}-Period Level</span>
+                <span className="text-sm font-bold text-rose-300">{rl.level.toFixed(3)}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -536,6 +737,11 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
                     <span className="text-sm font-bold text-cyan-300">
                       {trend.acceleration > 0 ? '+' : ''}{trend.acceleration.toFixed(4)}
                     </span>
+                    {trend.reversalPoint !== undefined && (
+                      <span className="text-[10px] text-amber-300 block mt-0.5">
+                        Sign Reversal @ index {trend.reversalPoint}
+                      </span>
+                    )}
                   </div>
                 )}
                 {entropy && (

@@ -129,7 +129,8 @@ export const powerConnector: EarthDataConnector = {
         throw new Error('Invalid NASA POWER payload format');
       }
 
-      const rawPoints: { date: string; value: number }[] = [];
+      const rawPoints: { date: string; value: number | null }[] = [];
+      let validCount = 0;
 
       for (const key of Object.keys(parameterData)) {
         if (key.length !== 6) continue;
@@ -144,22 +145,30 @@ export const powerConnector: EarthDataConnector = {
 
         let val: number = parameterData[key];
 
-        // CRITICAL: Filter -999.0 fill values (polar night, missing data)
-        if (typeof val !== 'number' || val <= FILL_VALUE + 100) continue;
+        // Preserve -999.0 fill values (polar night, missing data) as explicit null slots
+        // so seasonal index alignment (y * 12 + m) remains intact.
+        if (typeof val !== 'number' || !isFinite(val) || val <= FILL_VALUE + 100) {
+          rawPoints.push({
+            date: `${yearStr}-${monthStr}`,
+            value: null,
+          });
+          continue;
+        }
 
         // Convert mm/day → mm/month for applicable parameters
         if (MM_DAY_PARAMS.has(nasaParam)) {
           val = val * daysInMonth(yearNum, monthNum);
         }
 
+        validCount++;
         rawPoints.push({
           date: `${yearStr}-${monthStr}`,
           value: +val.toFixed(2),
         });
       }
 
-      if (rawPoints.length < 24) {
-        throw new Error(`Insufficient data points (${rawPoints.length}) from NASA POWER`);
+      if (validCount < 24) {
+        throw new Error(`Insufficient valid data points (${validCount}) from NASA POWER`);
       }
 
       rawPoints.sort((a, b) => a.date.localeCompare(b.date));
@@ -168,7 +177,7 @@ export const powerConnector: EarthDataConnector = {
         points: processTimeSeries(rawPoints),
         provenance: 'reanalysis_model',
         sourceLabel: `NASA POWER (${nasaParam})`,
-        statusMessage: `Successfully retrieved ${rawPoints.length} months of NASA POWER (${nasaParam}) data.`,
+        statusMessage: `Successfully retrieved ${validCount} valid months (${rawPoints.length - validCount} missing/polar-night slots preserved) of NASA POWER (${nasaParam}) data.`,
       };
 
       // Cache the result

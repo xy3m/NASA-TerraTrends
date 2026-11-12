@@ -28,8 +28,12 @@ import { RegionalContrastView } from './components/RegionalContrastView';
 import { VariableEncyclopedia } from './components/VariableEncyclopedia';
 import { CustomDataUploader } from './components/CustomDataUploader';
 import { DataExportModal } from './components/DataExportModal';
+import type { Phase2SeriesHandoff } from './services/phase2Api';
 
 const StatisticalLab = React.lazy(() => import('./components/StatisticalLab/StatisticalLab'));
+const Phase2Lab = React.lazy(() =>
+  import('./components/Phase2Lab/Phase2Lab').then((m) => ({ default: m.Phase2Lab }))
+);
 import { 
   Sparkles, 
   Globe2, 
@@ -38,7 +42,8 @@ import {
   Satellite, 
   Database,
   ExternalLink,
-  BookOpen
+  BookOpen,
+  Cpu
 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -54,6 +59,9 @@ export const App: React.FC = () => {
   const [uploadedCsvText, setUploadedCsvText] = useState<string | null>(null);
   const [isLiveNasa, setIsLiveNasa] = useState<boolean>(false);
   const [provenanceTier, setProvenanceTier] = useState<ProvenanceTier>('reanalysis_model');
+  const [provenanceSource, setProvenanceSource] = useState<string>('NASA POWER MERRA-2');
+  const [statusMessage, setStatusMessage] = useState<string | undefined>(undefined);
+  const [phase2Handoff, setPhase2Handoff] = useState<Phase2SeriesHandoff | null>(null);
   const liveQueryIdRef = useRef<number>(0);
   const section1Ref = useRef<HTMLElement | null>(null);
   const section2Ref = useRef<HTMLElement | null>(null);
@@ -106,7 +114,7 @@ export const App: React.FC = () => {
 
   // Statistical trend analysis
   const trendStats: TrendAnalysisResult = useMemo(() => {
-    return analyzeTrend(
+    const base = analyzeTrend(
       activePoints,
       selectedVariable.id,
       selectedVariable.name,
@@ -115,7 +123,13 @@ export const App: React.FC = () => {
       selectedRegion.coordinates,
       true // use anomaly for trend
     );
-  }, [activePoints, selectedVariable, selectedRegion]);
+    return {
+      ...base,
+      provenance: provenanceTier,
+      provenanceSource,
+      statusMessage,
+    };
+  }, [activePoints, selectedVariable, selectedRegion, provenanceTier, provenanceSource, statusMessage]);
 
   // Fetch live connector data (or calibrated fallback) for coordinates with race guard
   const loadCoordinateData = async (lat: number, lon: number, variableId: VariableId) => {
@@ -138,6 +152,8 @@ export const App: React.FC = () => {
             setCustomPoints(res.points);
             setIsLiveNasa(true);
             setProvenanceTier(res.provenance);
+            setProvenanceSource(res.sourceLabel || connector.name);
+            setStatusMessage(res.statusMessage);
             return;
           }
         } catch (err) {
@@ -151,6 +167,14 @@ export const App: React.FC = () => {
       setCustomPoints(points);
       setIsLiveNasa(isLive);
       setProvenanceTier(isLive ? 'reanalysis_model' : 'synthetic_demo');
+      setProvenanceSource(
+        isLive ? 'NASA POWER MERRA-2 Reanalysis' : 'Calibrated Demonstration Series'
+      );
+      setStatusMessage(
+        isLive
+          ? `Retrieved live monthly climatology (${points.length} records).`
+          : 'Live NASA endpoint unavailable; showing calibrated demonstration dataset.'
+      );
     } finally {
       if (queryId === liveQueryIdRef.current) {
         stopLoadingFeed();
@@ -182,6 +206,8 @@ export const App: React.FC = () => {
     setUploadedCsvText(null);
     setIsLiveNasa(false);
     setProvenanceTier('synthetic_demo');
+    setProvenanceSource('Calibrated Demonstration Series');
+    setStatusMessage(undefined);
 
     // Auto-select the region's primary variable if available
     const primary = EARTH_VARIABLES.find(v => v.id === region.primaryVariable);
@@ -220,7 +246,8 @@ export const App: React.FC = () => {
     variable: EarthVariable,
     points: TimeSeriesPoint[],
     isLive: boolean,
-    rawCsvText?: string
+    rawCsvText?: string,
+    provenanceMeta?: { tier: ProvenanceTier; sourceLabel?: string; statusMessage?: string }
   ) => {
     liveQueryIdRef.current++;
     stopLoadingFeed();
@@ -230,7 +257,9 @@ export const App: React.FC = () => {
     setCustomPoints(points);
     setUploadedCsvText(rawCsvText ?? null);
     setIsLiveNasa(isLive);
-    setProvenanceTier('user_upload');
+    setProvenanceTier(provenanceMeta?.tier ?? 'user_upload');
+    setProvenanceSource(provenanceMeta?.sourceLabel ?? (isLive ? 'Live Satellite / Reanalysis Feed' : 'User Uploaded Series'));
+    setStatusMessage(provenanceMeta?.statusMessage);
     setCurrentMode('explorer'); // Navigate back to explorer to inspect
   };
 
@@ -419,14 +448,36 @@ export const App: React.FC = () => {
 
             {/* Section 4: Statistical Significance Analysis */}
             <section className="space-y-3">
-              <div>
-                <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-                  <Sparkles className="w-5 h-5 text-emerald-400" />
-                  <span>4. Statistical Significance & Rate of Change</span>
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Rigorous Mann-Kendall rank correlation, Theil-Sen slope, and Student's t-test evaluations
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                    <Sparkles className="w-5 h-5 text-emerald-400" />
+                    <span>4. Statistical Significance & Rate of Change</span>
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Rigorous Mann-Kendall rank correlation, Theil-Sen slope, and Student's t-test evaluations
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setPhase2Handoff({
+                      title: `${selectedVariable.name} (${selectedVariable.shortName})`,
+                      variableId: selectedVariable.id,
+                      unit: selectedVariable.unit,
+                      regionName: selectedRegion.name,
+                      dates: activePoints.map((p) => p.date),
+                      values: activePoints.map((p) => p.raw),
+                      provenanceTier,
+                    });
+                    setCurrentMode('phase2');
+                  }}
+                  className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-600/90 to-purple-600/90 hover:from-cyan-500 hover:to-purple-500 text-xs font-bold text-white shadow-lg cursor-pointer self-start sm:self-auto"
+                >
+                  <Cpu className="w-4 h-4" />
+                  <span>Analyze in Phase 2 (SARIMA / MCMC)</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
 
               <StatsSummaryCard stats={trendStats} />
@@ -483,7 +534,33 @@ export const App: React.FC = () => {
                 Loading Statistical Analysis Lab...
               </div>
             }>
-              <StatisticalLab />
+              <StatisticalLab
+                onSendToPhase2={(payload) => {
+                  setPhase2Handoff({
+                    title: payload.name,
+                    dates: payload.dates,
+                    values: payload.values,
+                    provenanceTier: 'user_upload',
+                  });
+                  setCurrentMode('phase2');
+                }}
+              />
+            </React.Suspense>
+          </div>
+        )}
+
+        {/* MODE 7: PHASE 2 SCIENTIFIC COMPUTE LAB */}
+        {currentMode === 'phase2' && (
+          <div className="animate-fadeIn">
+            <React.Suspense fallback={
+              <div className="flex items-center justify-center p-16 text-slate-400 font-mono text-xs">
+                Loading Phase 2 Scientific Compute Engine...
+              </div>
+            }>
+              <Phase2Lab
+                initialHandoff={phase2Handoff}
+                onClearHandoff={() => setPhase2Handoff(null)}
+              />
             </React.Suspense>
           </div>
         )}

@@ -5,26 +5,45 @@ import { AlertCircle, CheckCircle, ShieldAlert, BarChart, Info } from 'lucide-re
 interface DiagnosticsPanelProps {
   diagnostics: DiagnosticResults;
   variableName: string;
+  outlierMethod?: 'iqr' | 'zscore' | 'grubbs';
+  onOutlierMethodChange?: (method: 'iqr' | 'zscore' | 'grubbs') => void;
 }
 
 export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
   diagnostics,
   variableName,
+  outlierMethod = 'iqr',
+  onOutlierMethodChange,
 }) => {
   const { normalityTest, outliers, missingnessProfile, autocorrelation, heteroskedasticity, vif } = diagnostics;
 
   return (
     <div className="space-y-6 bg-[#071326] border border-slate-800 rounded-2xl p-5">
-      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
         <div className="flex items-center space-x-2">
           <ShieldAlert className="w-5 h-5 text-amber-400" />
           <h3 className="text-sm font-bold text-white">
             Statistical Assumptions & Diagnostic Suite ({variableName})
           </h3>
         </div>
-        <span className="text-xs text-slate-400 font-mono">
-          Rigorous Scientific Validation
-        </span>
+        {onOutlierMethodChange ? (
+          <div className="flex items-center space-x-2 text-xs">
+            <span className="text-slate-400">Outlier Criterion:</span>
+            <select
+              value={outlierMethod}
+              onChange={e => onOutlierMethodChange(e.target.value as 'iqr' | 'zscore' | 'grubbs')}
+              className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-cyan-300 font-mono"
+            >
+              <option value="iqr">1.5x IQR Fence</option>
+              <option value="zscore">Z-Score (|z| &gt; 3)</option>
+              <option value="grubbs">Grubbs Maximum Deviate</option>
+            </select>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-400 font-mono">
+            Rigorous Scientific Validation
+          </span>
+        )}
       </div>
 
       {/* 4 Summary Cards */}
@@ -73,15 +92,15 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              Autocorrelation (DW)
+              Autocorrelation (DW &amp; LB)
             </span>
             <BarChart className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-sm font-bold text-white font-mono">
-            DW: {autocorrelation.durbinWatson.toFixed(2)}
+            DW: {autocorrelation.durbinWatson.toFixed(2)} | r₁: {autocorrelation.lag1.toFixed(2)}
           </div>
           <div className="text-[10px] text-slate-400 font-mono">
-            Lag-1 r: {autocorrelation.lag1.toFixed(3)}
+            Ljung-Box Q = {autocorrelation.ljungBoxQ.toFixed(2)} (p = {autocorrelation.ljungBoxP.toFixed(4)})
           </div>
         </div>
 
@@ -105,6 +124,26 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Outlier Table if Outliers Detected */}
+      {outliers.length > 0 && (
+        <div className="space-y-2 bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+          <h4 className="text-xs font-bold text-rose-300">
+            Detected Anomalies &amp; Outliers ({outliers.length} total • showing up to 12)
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {outliers.slice(0, 12).map((o, idx) => (
+              <span
+                key={idx}
+                className="px-2.5 py-1 rounded-lg bg-slate-950 border border-rose-500/30 text-[11px] font-mono text-slate-200"
+              >
+                row #{o.index}: <strong className="text-rose-300">{o.value.toFixed(3)}</strong>
+                {o.zScore !== undefined ? ` (${o.zScore.toFixed(2)})` : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Multicollinearity VIF Table if present */}
       {vif && vif.length > 0 && (

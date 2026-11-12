@@ -10,13 +10,16 @@ import {
   oneSampleTTest,
   twoSampleTTest,
   oneWayAnova,
+  twoWayAnova,
   bootstrapCI,
   multipleOLS,
   robustIRLS,
+  nonlinearRegression,
   pcaAnalysis,
   seasonalMannKendall,
   senSlopeExact,
   trendAcceleration,
+  fitGEV,
   pettittChangePoint,
   cusumChangePoint,
   shannonEntropy,
@@ -35,6 +38,9 @@ import {
   ChangePointResult,
   SeasonalMKResult,
   DiagnosticResults,
+  TwoWayAnovaResult,
+  NonlinearRegressionResult,
+  GEVResult,
 } from '../../types/earthScience';
 import { TTestResult, AnovaResult, BootstrapResult } from '../../services/statistics/inferential';
 import { MultipleTestingResult } from '../../services/statistics/fdr';
@@ -56,9 +62,17 @@ export interface LabResultsBundle {
   };
   ttest?: TTestResult;
   anova?: AnovaResult;
+  twoWayAnova?: TwoWayAnovaResult;
   regression?: RegressionResult;
+  nonlinear?: NonlinearRegressionResult;
   pca?: PCAResult;
-  trend?: SeasonalMKResult & { slope: number; acceleration?: number; isAccelerating?: boolean };
+  trend?: SeasonalMKResult & {
+    slope: number;
+    acceleration?: number;
+    isAccelerating?: boolean;
+    reversalPoint?: number;
+  };
+  gev?: GEVResult;
   changePoint?: ChangePointResult;
   cusumChangePoint?: ChangePointResult;
   fdr?: {
@@ -74,7 +88,11 @@ export interface LabResultsBundle {
   };
 }
 
-export const StatisticalLab: React.FC = () => {
+interface StatisticalLabProps {
+  onSendToPhase2?: (payload: { name: string; dates: string[]; values: (number | null)[] }) => void;
+}
+
+export const StatisticalLab: React.FC<StatisticalLabProps> = ({ onSendToPhase2 }) => {
   const [columns, setColumns] = useState<DataColumn[]>([]);
   const [datasetName, setDatasetName] = useState<string>('No Data Loaded');
   const [activeTab, setActiveTab] = useState<'data' | 'analysis' | 'diagnostics'>('data');
@@ -82,6 +100,7 @@ export const StatisticalLab: React.FC = () => {
   const [lastConfig, setLastConfig] = useState<AnalysisConfig | null>(null);
   const [analysisResults, setAnalysisResults] = useState<LabResultsBundle>({});
   const [diagnosticsResult, setDiagnosticsResult] = useState<DiagnosticResults | null>(null);
+  const [outlierMethod, setOutlierMethod] = useState<'iqr' | 'zscore' | 'grubbs'>('iqr');
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
   const handleDataLoaded = (cols: DataColumn[], name: string) => {
@@ -200,25 +219,62 @@ export const StatisticalLab: React.FC = () => {
         setDiagnosticsResult(runDiagnostics(primaryVals));
       }
 
-      // 3. t-Test
+      // 3. t-Test (2-sample Welch/Paired OR 1-sample vs mu0)
       else if (config.type === 'ttest') {
         const secondCol = columns.find(c => config.secondaryCols[0] === c.name);
         if (secondCol) {
-          newResults.ttest = twoSampleTTest(primaryVals, secondCol.values, false, config.alpha);
+          newResults.ttest = twoSampleTTest(primaryVals, secondCol.values, config.ttestPaired, config.alpha);
         } else {
-          newResults.ttest = oneSampleTTest(primaryVals, 0, config.alpha);
+          newResults.ttest = oneSampleTTest(primaryVals, config.ttestMu0, config.alpha);
         }
-        setDiagnosticsResult(runDiagnostics(primaryVals));
+        setDiagnosticsResult(runDiagnostics(primaryVals, undefined, undefined, outlierMethod));
       }
 
-      // 4. ANOVA
+      // 4. One-Way ANOVA
       else if (config.type === 'anova') {
         const allGroups = [
           primaryVals,
           ...columns.filter(c => config.secondaryCols.includes(c.name)).map(c => c.values),
         ];
         newResults.anova = oneWayAnova(allGroups);
-        setDiagnosticsResult(runDiagnostics(primaryVals));
+        setDiagnosticsResult(runDiagnostics(primaryVals, undefined, undefined, outlierMethod));
+      }
+
+      // 4b. Two-Way Factorial ANOVA (builds two median-split factors or temporal halves x seasonal halves)
+      else if (config.type === 'two_way_anova') {
+        const factorCols = columns.filter(c => config.secondaryCols.includes(c.name));
+        const obs: { value: number; levelA: string; levelB: string }[] = [];
+
+        if (factorCols.length >= 2) {
+          const colA = factorCols[0].values;
+          const colB = factorCols[1].values;
+          const medA = medianFn(colA.filter(v => isFinite(v)));
+          const medB = medianFn(colB.filter(v => isFinite(v)));
+          for (let i = 0; i < primaryVals.length; i++) {
+            if (isFinite(primaryVals[i]) && isFinite(colA[i]) && isFinite(colB[i])) {
+              obs.push({
+                value: primaryVals[i],
+                levelA: colA[i] >= medA ? `${factorCols[0].name} High` : `${factorCols[0].name} Low`,
+                levelB: colB[i] >= medB ? `${factorCols[1].name} High` : `${factorCols[1].name} Low`,
+              });
+            }
+          }
+          newResults.twoWayAnova = twoWayAnova(obs, factorCols[0].name, factorCols[1].name);
+        } else {
+          // Automatic epoch (Early vs Late) x Phase (Warm/Peak vs Cool/Trough) factorial design
+          const half = Math.floor(primaryVals.length / 2);
+          for (let i = 0; i < primaryVals.length; i++) {
+            if (!isFinite(primaryVals[i])) continue;
+            const mod = i % 12;
+            obs.push({
+              value: primaryVals[i],
+              levelA: i < half ? 'Early Epoch' : 'Late Epoch',
+              levelB: mod >= 3 && mod <= 8 ? 'Warm/Peak Season' : 'Cool/Shoulder Season',
+            });
+          }
+          newResults.twoWayAnova = twoWayAnova(obs, 'Epoch Half', 'Seasonal Phase');
+        }
+        setDiagnosticsResult(runDiagnostics(primaryVals, undefined, undefined, outlierMethod));
       }
 
       // 5. Multiple Regression
@@ -243,8 +299,24 @@ export const StatisticalLab: React.FC = () => {
             newResults.regression = multipleOLS(X, y);
           }
 
-          setDiagnosticsResult(runDiagnostics(y, newResults.regression.residuals, X));
+          setDiagnosticsResult(runDiagnostics(y, newResults.regression.residuals, X, outlierMethod));
         }
+      }
+
+      // 5b. Nonlinear Regression Curve Fitting (offloaded via statsWorker)
+      else if (config.type === 'nonlinear') {
+        const xCol = columns.find(c => config.secondaryCols[0] === c.name);
+        const xVals = xCol ? xCol.values : primaryVals.map((_, idx) => idx + 1);
+        const nlExec = await runStatsWorkerTask<NonlinearRegressionResult>(
+          'nonlinear',
+          { x: xVals, y: primaryVals, model: config.nonlinearModel },
+          () => nonlinearRegression(xVals, primaryVals, config.nonlinearModel)
+        );
+        workerUsed = nlExec.viaWorker;
+        totalWorkerMs = nlExec.durationMs;
+        workerTasks.push(`nonlinear(${config.nonlinearModel})`);
+        newResults.nonlinear = nlExec.result;
+        setDiagnosticsResult(runDiagnostics(primaryVals, nlExec.result.residuals, undefined, outlierMethod));
       }
 
       // 6. PCA (offloaded via statsWorker)
@@ -301,12 +373,27 @@ export const StatisticalLab: React.FC = () => {
           slope: slopeExec.result,
           acceleration: accel.acceleration,
           isAccelerating: accel.isAccelerating,
+          reversalPoint: accel.reversalPoint,
         };
         newResults.entropy = {
           shannon: shannonEntropy(primaryVals),
           sample: sampleEntropy(primaryVals),
         };
-        setDiagnosticsResult(runDiagnostics(primaryVals));
+        setDiagnosticsResult(runDiagnostics(primaryVals, undefined, undefined, outlierMethod));
+      }
+
+      // 7b. Extreme Value Analysis (GEV L-Moments via statsWorker)
+      else if (config.type === 'extremes') {
+        const gevExec = await runStatsWorkerTask<GEVResult>(
+          'gev',
+          { values: primaryVals, blockSize: config.gevBlockSize },
+          () => fitGEV(primaryVals, config.gevBlockSize)
+        );
+        workerUsed = gevExec.viaWorker;
+        totalWorkerMs = gevExec.durationMs;
+        workerTasks.push('gev');
+        newResults.gev = gevExec.result;
+        setDiagnosticsResult(runDiagnostics(primaryVals, undefined, undefined, outlierMethod));
       }
 
       // 8. Change-Point (Pettitt via statsWorker + CUSUM comparison)
@@ -462,6 +549,22 @@ export const StatisticalLab: React.FC = () => {
                 secondaryColsData: secondaryColsObj.map(c => ({ name: c.name, values: c.values })),
               }}
               results={analysisResults}
+              onSendToPhase2={
+                onSendToPhase2
+                  ? () => {
+                      const dates = primaryColObj.values.map((_, idx) => {
+                        const yr = 2000 + Math.floor(idx / 12);
+                        const mo = (idx % 12) + 1;
+                        return `${yr}-${String(mo).padStart(2, '0')}`;
+                      });
+                      onSendToPhase2({
+                        name: `${datasetName} — ${primaryColObj.name}`,
+                        dates,
+                        values: primaryColObj.values.map(v => (isFinite(v) ? v : null)),
+                      });
+                    }
+                  : undefined
+              }
             />
           )}
         </div>
@@ -472,6 +575,13 @@ export const StatisticalLab: React.FC = () => {
         <DiagnosticsPanel
           diagnostics={diagnosticsResult}
           variableName={primaryColObj?.name || 'Dataset'}
+          outlierMethod={outlierMethod}
+          onOutlierMethodChange={(method) => {
+            setOutlierMethod(method);
+            if (primaryColObj) {
+              setDiagnosticsResult(runDiagnostics(primaryColObj.values, undefined, undefined, method));
+            }
+          }}
         />
       )}
     </div>
