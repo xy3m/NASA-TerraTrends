@@ -7,7 +7,8 @@ import {
   UploadCloud, 
   FileText, 
   Radio,
-  FlaskConical
+  FlaskConical,
+  Loader2
 } from 'lucide-react';
 
 export type AppMode = 'explorer' | 'detective' | 'contrast' | 'encyclopedia' | 'upload' | 'lab';
@@ -60,6 +61,7 @@ interface NavbarProps {
   onOpenExport: () => void;
   dataFeedSource: DataFeedSource;
   selectedRegionName: string;
+  isLoadingFeed?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -68,6 +70,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenExport,
   dataFeedSource,
   selectedRegionName,
+  isLoadingFeed = false,
 }) => {
   const feedMeta = DATA_FEED_META[dataFeedSource];
 
@@ -99,10 +102,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Data Feed Status Pill (Mobile view) */}
           <div className="md:hidden flex items-center space-x-1.5 px-2 py-1 rounded-full text-xs font-mono bg-[#071326] border border-slate-800">
-            <Radio className={`w-3 h-3 ${feedMeta.colorClass} ${feedMeta.pulse ? 'animate-pulse' : ''}`} />
-            <span className={feedMeta.colorClass}>
-              {feedMeta.shortLabel}
-            </span>
+            {isLoadingFeed ? (
+              <>
+                <Loader2 className="w-3 h-3 text-amber-400 animate-spin" />
+                <span className="text-amber-300">FETCHING...</span>
+              </>
+            ) : (
+              <>
+                <Radio className={`w-3 h-3 ${feedMeta.colorClass} ${feedMeta.pulse ? 'animate-pulse' : ''}`} />
+                <span className={feedMeta.colorClass}>
+                  {feedMeta.shortLabel}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -184,13 +196,27 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Right Actions: Data Feed Status & Export */}
         <div className="hidden md:flex items-center space-x-3">
           <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono">
-            <Radio className={`w-3.5 h-3.5 ${feedMeta.colorClass} ${feedMeta.pulse ? 'animate-pulse' : ''}`} />
-            <div>
-              <span className="text-slate-500 text-[10px] block leading-none">DATA FEED</span>
-              <span className={`font-semibold ${feedMeta.colorClass}`}>
-                {feedMeta.label}
-              </span>
-            </div>
+            {isLoadingFeed ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                <div>
+                  <span className="text-slate-500 text-[10px] block leading-none">DATA FEED</span>
+                  <span className="font-semibold text-amber-300">
+                    Fetching Live Data...
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <Radio className={`w-3.5 h-3.5 ${feedMeta.colorClass} ${feedMeta.pulse ? 'animate-pulse' : ''}`} />
+                <div>
+                  <span className="text-slate-500 text-[10px] block leading-none">DATA FEED</span>
+                  <span className={`font-semibold ${feedMeta.colorClass}`}>
+                    {feedMeta.label}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           <button

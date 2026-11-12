@@ -20,7 +20,8 @@ import {
   Activity, 
   Calendar,
   Layers,
-  Sparkles 
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 
 ChartJS.register(
@@ -39,6 +40,8 @@ interface TimeSeriesChartProps {
   variable: EarthVariable;
   regionName: string;
   stats: TrendAnalysisResult;
+  isLoading?: boolean;
+  loadingMessage?: string | null;
 }
 
 export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
@@ -46,6 +49,8 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   variable,
   regionName,
   stats,
+  isLoading = false,
+  loadingMessage,
 }) => {
   const chartRef = useRef<any>(null);
 
@@ -276,12 +281,18 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       {/* Top Header & Controls Bar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-slate-800/80">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base sm:text-lg font-bold text-white flex items-center space-x-2">
               <span>{variable.name}</span>
               <span className="text-slate-500 font-normal">in</span>
               <span className="text-cyan-400">{regionName}</span>
             </h3>
+            {isLoading && (
+              <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>{loadingMessage || 'Fetching live feed...'}</span>
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
             Missions: {variable.missions.join(' • ')} • Window: {visibleStart} to {visibleEnd} ({visibleCount} pts)
@@ -397,6 +408,22 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
       {/* Main Chart Canvas */}
       <div className="relative h-72 sm:h-80 md:h-96 w-full pt-2">
+        {isLoading && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#030915]/80 backdrop-blur-sm rounded-xl border border-amber-500/30 text-center p-4">
+            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-amber-950/70 border border-amber-500/40 shadow-lg shadow-amber-500/15 mb-3">
+              <Loader2 className="w-6 h-6 text-amber-300 animate-spin" />
+            </div>
+            <div className="text-sm font-bold text-white">
+              Loading Live Observations for {variable.shortName}
+            </div>
+            <p className="text-xs text-amber-300 font-mono mt-1 max-w-md">
+              {loadingMessage || `Querying ${variable.missions[0] || 'NASA'} data feed...`}
+            </p>
+            <span className="text-[11px] text-slate-400 mt-1.5">
+              Please wait — the chart and statistics will update once verified live data arrives.
+            </span>
+          </div>
+        )}
         <Line ref={chartRef} data={{ labels, datasets }} options={chartOptions} />
       </div>
 
