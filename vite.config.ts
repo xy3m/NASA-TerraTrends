@@ -12,4 +12,21 @@ export default defineConfig({
     port: 3000,
     open: false,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/chart.js') || id.includes('node_modules/react-chartjs-2')) {
+            return 'vendor-charts';
+          }
+          if (id.includes('node_modules/leaflet')) {
+            return 'vendor-leaflet';
+          }
+          if (id.includes('node_modules/ml-matrix') || id.includes('node_modules/simple-statistics')) {
+            return 'vendor-math';
+          }
+        },
+      },
+    },
+  },
 });

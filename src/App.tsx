@@ -4,7 +4,8 @@ import {
   HotspotRegion, 
   TimeSeriesPoint, 
   TrendAnalysisResult, 
-  VariableId 
+  VariableId,
+  ProvenanceTier
 } from './types/earthScience';
 import { 
   EARTH_VARIABLES, 
@@ -14,6 +15,7 @@ import {
   fetchLiveNasaPowerData,
   parseCustomCsv
 } from './services/nasaData';
+import { connectorRegistry } from './services/connectors';
 import { analyzeTrend, processTimeSeries } from './services/statistics';
 import { Navbar, AppMode, DataFeedSource } from './components/Navbar';
 import { EarthMap } from './components/EarthMap';
@@ -26,6 +28,8 @@ import { RegionalContrastView } from './components/RegionalContrastView';
 import { VariableEncyclopedia } from './components/VariableEncyclopedia';
 import { CustomDataUploader } from './components/CustomDataUploader';
 import { DataExportModal } from './components/DataExportModal';
+
+const StatisticalLab = React.lazy(() => import('./components/StatisticalLab/StatisticalLab'));
 import { 
   Sparkles, 
   Globe2, 
@@ -49,6 +53,7 @@ export const App: React.FC = () => {
   const [customPoints, setCustomPoints] = useState<TimeSeriesPoint[] | null>(null);
   const [uploadedCsvText, setUploadedCsvText] = useState<string | null>(null);
   const [isLiveNasa, setIsLiveNasa] = useState<boolean>(false);
+  const [provenanceTier, setProvenanceTier] = useState<ProvenanceTier>('reanalysis_model');
   const liveQueryIdRef = useRef<number>(0);
   const section1Ref = useRef<HTMLElement | null>(null);
   const section2Ref = useRef<HTMLElement | null>(null);
@@ -78,18 +83,43 @@ export const App: React.FC = () => {
     );
   }, [activePoints, selectedVariable, selectedRegion]);
 
-  // Fetch live NASA POWER data (or calibrated fallback) for coordinates with race guard
+  // Fetch live connector data (or calibrated fallback) for coordinates with race guard
   const loadCoordinateData = async (lat: number, lon: number, variableId: VariableId) => {
     const queryId = ++liveQueryIdRef.current;
+
+    // Check connector registry (supports POWER, ORNL MODIS, NOAA Tides, USGS Water)
+    const connector = connectorRegistry.getBestConnector(variableId, lat, lon);
+    if (connector?.capabilities.timeSeries) {
+      try {
+        const res = await connector.fetchTimeSeries({ lat, lon, variableId });
+        if (queryId !== liveQueryIdRef.current) return;
+        if (res.points.length >= 24) {
+          setCustomPoints(res.points);
+          setIsLiveNasa(true);
+          setProvenanceTier(res.provenance);
+          return;
+        }
+      } catch (err) {
+        console.warn(`Connector ${connector.id} query failed, attempting NASA POWER fallback:`, err);
+      }
+    }
+
+    // Direct NASA POWER API / calibrated fallback
     const { points, isLiveNasa: isLive } = await fetchLiveNasaPowerData(lat, lon, variableId);
     if (queryId !== liveQueryIdRef.current) return;
     setCustomPoints(points);
     setIsLiveNasa(isLive);
+    setProvenanceTier(isLive ? 'reanalysis_model' : 'synthetic_demo');
   };
 
-  // Fetch live NASA POWER data on initial load for the default hotspot if supported
+  // Fetch live connector data on initial load for the default hotspot if supported
   useEffect(() => {
-    if (NASA_POWER_PARAM_MAP[selectedVariable.id]) {
+    const connector = connectorRegistry.getBestConnector(
+      selectedVariable.id,
+      selectedRegion.coordinates[0],
+      selectedRegion.coordinates[1]
+    );
+    if (connector?.capabilities.timeSeries || NASA_POWER_PARAM_MAP[selectedVariable.id]) {
       loadCoordinateData(
         selectedRegion.coordinates[0],
         selectedRegion.coordinates[1],
@@ -105,6 +135,7 @@ export const App: React.FC = () => {
     setCustomPoints(null);
     setUploadedCsvText(null);
     setIsLiveNasa(false);
+    setProvenanceTier('synthetic_demo');
 
     // Auto-select the region's primary variable if available
     const primary = EARTH_VARIABLES.find(v => v.id === region.primaryVariable);
@@ -113,7 +144,8 @@ export const App: React.FC = () => {
       setSelectedVariable(primary);
     }
 
-    if (NASA_POWER_PARAM_MAP[targetVar.id]) {
+    const connector = connectorRegistry.getBestConnector(targetVar.id, region.coordinates[0], region.coordinates[1]);
+    if (connector?.capabilities.timeSeries || NASA_POWER_PARAM_MAP[targetVar.id]) {
       loadCoordinateData(region.coordinates[0], region.coordinates[1], targetVar.id);
     }
   };
@@ -151,6 +183,7 @@ export const App: React.FC = () => {
     setCustomPoints(points);
     setUploadedCsvText(rawCsvText ?? null);
     setIsLiveNasa(isLive);
+    setProvenanceTier('user_upload');
     setCurrentMode('explorer'); // Navigate back to explorer to inspect
   };
 
@@ -165,11 +198,13 @@ export const App: React.FC = () => {
     });
   }, [currentMode, selectedRegion]);
 
-  const dataFeedSource: DataFeedSource = isLiveNasa
-    ? 'live'
-    : selectedRegion.id.startsWith('csv_')
-      ? 'csv'
-      : 'calibrated';
+  const dataFeedSource: DataFeedSource = selectedRegion.id.startsWith('csv_')
+    ? 'csv'
+    : provenanceTier === 'satellite_observation'
+      ? 'satellite'
+      : isLiveNasa
+        ? 'reanalysis'
+        : 'calibrated';
 
   return (
     <div className="min-h-screen bg-[#030915] text-white flex flex-col selection:bg-[#3EC7F2] selection:text-[#030915]">
@@ -296,7 +331,9 @@ export const App: React.FC = () => {
                     liveQueryIdRef.current++;
                     setCustomPoints(null);
                     setIsLiveNasa(false);
-                    if (NASA_POWER_PARAM_MAP[v.id]) {
+                    setProvenanceTier('synthetic_demo');
+                    const connector = connectorRegistry.getBestConnector(v.id, selectedRegion.coordinates[0], selectedRegion.coordinates[1]);
+                    if (connector?.capabilities.timeSeries || NASA_POWER_PARAM_MAP[v.id]) {
                       const [lat, lon] = selectedRegion.coordinates;
                       loadCoordinateData(lat, lon, v.id);
                     }
@@ -381,6 +418,19 @@ export const App: React.FC = () => {
               initialCoordinates={selectedRegion.coordinates}
               onAnalyzeCustomData={handleAnalyzeCustomData}
             />
+          </div>
+        )}
+
+        {/* MODE 6: STATISTICAL ANALYSIS LAB */}
+        {currentMode === 'lab' && (
+          <div className="animate-fadeIn">
+            <React.Suspense fallback={
+              <div className="flex items-center justify-center p-16 text-slate-400 font-mono text-xs">
+                Loading Statistical Analysis Lab...
+              </div>
+            }>
+              <StatisticalLab />
+            </React.Suspense>
           </div>
         )}
 

@@ -6,22 +6,87 @@ export type VariableId =
   | 'evapo'
   | 'aod'
   | 'lst_day'
-  | 'ozone';
+  | 'ozone'
+  // Phase 1 expanded variables
+  | 'pressure'
+  | 'humidity'
+  | 'specific_humidity'
+  | 'wind_speed'
+  | 'radiation_sw'
+  | 'radiation_lw'
+  | 'albedo'
+  | 'snow_depth'
+  | 'snow_precip'
+  | 'ozone_total'
+  | 'soil_moist_top'
+  | 'soil_moist_prof'
+  | 'sea_level'
+  | 'sst'
+  | 'streamflow'
+  | 'evi';
+
+export type VariableCategory = 'Atmosphere' | 'Land' | 'Hydrosphere' | 'Biosphere' | 'Cryosphere' | 'Ocean';
+
+export type MeasurementType = 'Satellite Instrument' | 'Global Assimilation Model' | 'Combined Reanalysis' | 'In-Situ Gauge Network';
+
+export type ProvenanceTier =
+  | 'satellite_observation' // ORNL MODIS, NOAA, USGS real-time
+  | 'reanalysis_model'      // NASA POWER (MERRA-2/GLDAS)
+  | 'user_upload'           // CSV/JSON uploaded by user
+  | 'synthetic_demo';       // Calibrated model fallback data
+
+export const PROVENANCE_META: Record<ProvenanceTier, {
+  label: string;
+  shortLabel: string;
+  icon: string;
+  colorClass: string;
+  description: string;
+}> = {
+  satellite_observation: {
+    label: 'Satellite Observation',
+    shortLabel: 'SAT OBS',
+    icon: '🛰️',
+    colorClass: 'text-emerald-400',
+    description: 'Direct satellite or in-situ instrument measurements (ORNL MODIS, NOAA gauges, USGS streamflow)',
+  },
+  reanalysis_model: {
+    label: 'NASA Model / Reanalysis',
+    shortLabel: 'REANALYSIS',
+    icon: '🔄',
+    colorClass: 'text-cyan-400',
+    description: 'NASA POWER gridded reanalysis data (MERRA-2, GLDAS, CERES assimilations)',
+  },
+  user_upload: {
+    label: 'User Upload',
+    shortLabel: 'USER CSV',
+    icon: '📤',
+    colorClass: 'text-amber-400',
+    description: 'Custom CSV or JSON data uploaded by the user',
+  },
+  synthetic_demo: {
+    label: 'Calibrated Demonstration',
+    shortLabel: 'DEMO',
+    icon: '🧪',
+    colorClass: 'text-slate-400',
+    description: 'Synthetic time series calibrated against published observations for offline demonstration',
+  },
+};
 
 export interface EarthVariable {
   id: VariableId;
   name: string;
   shortName: string;
   unit: string;
-  category: 'Atmosphere' | 'Land' | 'Hydrosphere' | 'Biosphere';
+  category: VariableCategory;
   description: string;
   studentExplanation: string;
   missions: string[]; // e.g. ["MODIS (Terra/Aqua)", "MERRA-2"]
-  measurementType: 'Satellite Instrument' | 'Global Assimilation Model' | 'Combined Reanalysis';
+  measurementType: MeasurementType;
   typicalRange: [number, number];
   color: string;
   iconName: string;
   driverExamples: string[];
+  fillValue?: number; // e.g. -999 for NASA POWER polar-night
 }
 
 export interface HotspotRegion {
@@ -30,7 +95,7 @@ export interface HotspotRegion {
   countryOrOcean: string;
   coordinates: [number, number]; // [lat, lon]
   hasCoordinates?: boolean; // False when uploaded CSV lacks lat/lon columns
-  category: 'Polar' | 'Tropical Rainforest' | 'Arid / Desert' | 'Agricultural' | 'Urban' | 'Marine' | 'High Altitude';
+  category: 'Polar' | 'Tropical Rainforest' | 'Arid / Desert' | 'Agricultural' | 'Urban' | 'Marine' | 'High Altitude' | 'Coastal' | 'Riverine';
   description: string;
   keyPhenomenon: string;
   primaryVariable: VariableId;
@@ -93,6 +158,142 @@ export interface TrendAnalysisResult {
   // Descriptive summary
   plainEnglishVerdict: string;
   scientificImplication: string;
+
+  // Provenance
+  provenance?: ProvenanceTier;
+}
+
+// ── Connector Registry Types ──────────────────────────────────────────
+
+export interface ConnectorCapabilities {
+  timeSeries: boolean;       // Can return TimeSeriesPoint[]
+  mapTiles: boolean;         // Can provide WMTS/tile overlays
+  catalogSearch: boolean;    // Can search metadata/collections
+  pointSubset: boolean;      // Can query by lat/lon point
+  regionSubset: boolean;     // Can query by bounding box
+}
+
+export interface ConnectorFetchOptions {
+  lat: number;
+  lon: number;
+  variableId: VariableId;
+  startYear?: number;
+  endYear?: number;
+  parameter?: string; // connector-specific parameter override
+}
+
+export interface ConnectorFetchResult {
+  points: TimeSeriesPoint[];
+  provenance: ProvenanceTier;
+  sourceLabel: string;
+  statusMessage: string;
+}
+
+export interface EarthDataConnector {
+  id: string;
+  name: string;
+  shortName: string;
+  description: string;
+  baseUrl: string;
+  capabilities: ConnectorCapabilities;
+  supportedVariables: VariableId[];
+  provenanceType: ProvenanceTier;
+  requiresAuth: boolean;
+  requiresProxy: boolean;
+
+  /** Fetch time-series data for a point */
+  fetchTimeSeries(options: ConnectorFetchOptions): Promise<ConnectorFetchResult>;
+
+  /** Check if a variable is supported by this connector */
+  supportsVariable(variableId: VariableId): boolean;
+}
+
+// ── Statistical Lab Types ─────────────────────────────────────────────
+
+export interface DescriptiveStats {
+  count: number;
+  mean: number;
+  median: number;
+  mode: number[];
+  stdDev: number;
+  variance: number;
+  skewness: number;
+  kurtosis: number;
+  min: number;
+  max: number;
+  range: number;
+  q1: number;
+  q3: number;
+  iqr: number;
+  cv: number; // coefficient of variation
+  sem: number; // standard error of mean
+  missingCount: number;
+  missingPercent: number;
+}
+
+export interface CorrelationResult {
+  pearsonR: number;
+  pearsonP: number;
+  spearmanRho: number;
+  spearmanP: number;
+  kendallTau: number;
+  kendallP: number;
+}
+
+export interface RegressionResult {
+  coefficients: number[];
+  intercept: number;
+  rSquared: number;
+  adjustedRSquared: number;
+  fStatistic: number;
+  fPValue: number;
+  standardErrors: number[];
+  tStatistics: number[];
+  tPValues: number[];
+  residuals: number[];
+  predictedValues: number[];
+  durbinWatson: number;
+}
+
+export interface PCAResult {
+  eigenvalues: number[];
+  explainedVariance: number[];
+  cumulativeVariance: number[];
+  loadings: number[][];
+  scores: number[][];
+  componentLabels: string[];
+}
+
+export interface ChangePointResult {
+  method: 'Pettitt' | 'CUSUM';
+  changePointIndex: number;
+  changePointDate: string;
+  testStatistic: number;
+  pValue: number;
+  significanceLevel: string;
+  meanBefore: number;
+  meanAfter: number;
+  shift: number;
+}
+
+export interface DiagnosticResults {
+  normalityTest: { method: string; statistic: number; pValue: number; isNormal: boolean };
+  outliers: { index: number; value: number; method: string; zScore?: number }[];
+  missingnessProfile: { total: number; missing: number; percent: number; pattern: string };
+  autocorrelation: { lag1: number; durbinWatson: number; ljungBoxQ: number; ljungBoxP: number };
+  heteroskedasticity?: { bpStatistic: number; bpPValue: number; isHomoskedastic: boolean };
+  vif?: { variable: string; vif: number }[];
+}
+
+export interface SeasonalMKResult {
+  s: number;
+  varS: number;
+  z: number;
+  pValue: number;
+  tau: number;
+  method: 'standard' | 'hamed_rao' | 'tfpw';
+  seasonCount: number;
+  autocorrelationCorrection?: number;
 }
 
 export interface DetectiveCase {

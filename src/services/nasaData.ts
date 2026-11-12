@@ -1,7 +1,8 @@
 import { EarthVariable, HotspotRegion, TimeSeriesPoint, VariableId } from '../types/earthScience';
 import { processTimeSeries } from './statistics';
+import { ADDITIONAL_EARTH_VARIABLES } from './nasaDataExpanded';
 
-export const EARTH_VARIABLES: EarthVariable[] = [
+const CORE_EARTH_VARIABLES: EarthVariable[] = [
   {
     id: 'temp_air',
     name: 'Surface Air Temperature (2-Meter)',
@@ -122,6 +123,11 @@ export const EARTH_VARIABLES: EarthVariable[] = [
     iconName: 'ShieldAlert',
     driverExamples: ['Photochemical smog formation', 'Lightning-generated nitrogen oxides', 'Stratospheric-tropospheric exchange folds', 'Fossil fuel combustion'],
   },
+];
+
+export const EARTH_VARIABLES: EarthVariable[] = [
+  ...CORE_EARTH_VARIABLES,
+  ...ADDITIONAL_EARTH_VARIABLES,
 ];
 
 export const HOTSPOT_REGIONS: HotspotRegion[] = [
@@ -497,7 +503,7 @@ function getRegionVariableBaseline(region: HotspotRegion, varId: VariableId): Ba
   // Scale seasonality by latitude (flat near equator, strong at mid/high latitudes)
   const latScale = Math.max(0.22, Math.min(1.35, absLat / 40));
 
-  const defaults: Record<VariableId, BaselineConfig> = {
+  const defaults: Partial<Record<VariableId, BaselineConfig>> = {
     temp_air: {
       baseline: +(27 - absLat * 0.45).toFixed(1),
       trendPerYear: 0.028,
@@ -560,9 +566,121 @@ function getRegionVariableBaseline(region: HotspotRegion, varId: VariableId): Ba
       harmonic2Amp: 2.1,
       noiseStd: 1.8,
     },
+    pressure: {
+      baseline: +(101.3 - absLat * 0.04).toFixed(1),
+      trendPerYear: -0.005,
+      seasonalAmp: 0.65,
+      seasonalPhase: 1.2 + hemisphereShift,
+      noiseStd: 0.25,
+    },
+    humidity: {
+      baseline: +(62 + (absLat < 25 ? 12 : -6)).toFixed(1),
+      trendPerYear: -0.05,
+      seasonalAmp: 14.0,
+      seasonalPhase: 3.5 + hemisphereShift,
+      noiseStd: 3.5,
+    },
+    specific_humidity: {
+      baseline: +Math.max(0.5, 14.5 - absLat * 0.22).toFixed(2),
+      trendPerYear: 0.02,
+      seasonalAmp: +(4.2 * latScale).toFixed(2),
+      seasonalPhase: 4.5 + hemisphereShift,
+      noiseStd: 0.65,
+    },
+    wind_speed: {
+      baseline: +(4.6 + (absLat > 55 ? 2.2 : 0)).toFixed(1),
+      trendPerYear: 0.01,
+      seasonalAmp: 1.2,
+      seasonalPhase: 0.8 + hemisphereShift,
+      noiseStd: 0.45,
+    },
+    radiation_sw: {
+      baseline: +Math.max(30, 225 - absLat * 2.1).toFixed(1),
+      trendPerYear: 0.15,
+      seasonalAmp: +(75 * latScale).toFixed(1),
+      seasonalPhase: 4.7 + hemisphereShift,
+      noiseStd: 8.5,
+    },
+    radiation_lw: {
+      baseline: +(345 - absLat * 1.4).toFixed(1),
+      trendPerYear: 0.22,
+      seasonalAmp: +(32 * latScale).toFixed(1),
+      seasonalPhase: 4.6 + hemisphereShift,
+      noiseStd: 7.0,
+    },
+    albedo: {
+      baseline: +(absLat > 60 ? 0.62 : 0.22).toFixed(2),
+      trendPerYear: absLat > 60 ? -0.003 : -0.0005,
+      seasonalAmp: +(0.12 * latScale).toFixed(2),
+      seasonalPhase: 1.5 + hemisphereShift,
+      noiseStd: 0.02,
+    },
+    snow_depth: {
+      baseline: +(absLat > 50 ? 38 : 3).toFixed(1),
+      trendPerYear: absLat > 50 ? -0.45 : -0.02,
+      seasonalAmp: +(35 * latScale).toFixed(1),
+      seasonalPhase: 1.8 + hemisphereShift,
+      noiseStd: 4.5,
+    },
+    snow_precip: {
+      baseline: +(absLat > 40 ? 28 : 2).toFixed(1),
+      trendPerYear: -0.18,
+      seasonalAmp: +(24 * latScale).toFixed(1),
+      seasonalPhase: 1.5 + hemisphereShift,
+      noiseStd: 5.5,
+    },
+    ozone_total: {
+      baseline: +(305 + (absLat / 90) * 45).toFixed(1),
+      trendPerYear: 0.25,
+      seasonalAmp: 32.0,
+      seasonalPhase: 2.2 + hemisphereShift,
+      noiseStd: 6.5,
+    },
+    soil_moist_top: {
+      baseline: 0.24,
+      trendPerYear: -0.001,
+      seasonalAmp: 0.08,
+      seasonalPhase: 1.5 + hemisphereShift,
+      noiseStd: 0.02,
+    },
+    soil_moist_prof: {
+      baseline: 0.32,
+      trendPerYear: -0.0008,
+      seasonalAmp: 0.05,
+      seasonalPhase: 1.8 + hemisphereShift,
+      noiseStd: 0.015,
+    },
+    sea_level: {
+      baseline: 0.04,
+      trendPerYear: 0.0035,
+      seasonalAmp: 0.07,
+      seasonalPhase: 3.2 + hemisphereShift,
+      noiseStd: 0.018,
+    },
+    sst: {
+      baseline: +Math.max(-1.5, 26 - absLat * 0.42).toFixed(1),
+      trendPerYear: 0.022,
+      seasonalAmp: +(4.5 * latScale).toFixed(1),
+      seasonalPhase: 4.8 + hemisphereShift,
+      noiseStd: 0.45,
+    },
+    streamflow: {
+      baseline: 280,
+      trendPerYear: -0.85,
+      seasonalAmp: 160,
+      seasonalPhase: 3.8 + hemisphereShift,
+      noiseStd: 35,
+    },
+    evi: {
+      baseline: +(absLat > 60 ? 0.16 : 0.44).toFixed(2),
+      trendPerYear: -0.0008,
+      seasonalAmp: +(0.11 * latScale).toFixed(2),
+      seasonalPhase: 4.4 + hemisphereShift,
+      noiseStd: 0.018,
+    },
   };
 
-  const base = defaults[varId];
+  const base = defaults[varId] || defaults['temp_air']!;
   const override = REGION_OVERRIDES[region.id]?.[varId];
   if (!override) return base;
 
@@ -585,6 +703,19 @@ export const NASA_POWER_PARAM_MAP: Partial<Record<VariableId, string>> = {
   lst_day: 'TS',            // Earth Skin Temperature (°C)
   evapo: 'EVLAND',          // Evaporation Land (mm/day -> mm/month)
   aod: 'AOD_55',            // Aerosol Optical Depth 550nm (dimensionless)
+  pressure: 'PS',           // Surface Pressure (kPa)
+  humidity: 'RH2M',         // Relative Humidity at 2m (%)
+  specific_humidity: 'QV2M',// Specific Humidity at 2m (g/kg)
+  wind_speed: 'WS10M',      // Wind Speed at 10m (m/s)
+  radiation_sw: 'ALLSKY_SFC_SW_DWN', // Shortwave Radiation (W/m²)
+  radiation_lw: 'ALLSKY_SFC_LW_DWN', // Longwave Radiation (W/m²)
+  albedo: 'ALLSKY_SRF_ALB', // Surface Albedo (fraction)
+  snow_depth: 'SNODP',      // Snow Depth (cm)
+  snow_precip: 'PRECSNO',   // Snowfall (mm/day -> mm/month)
+  ozone_total: 'TO3',       // Total Column Ozone (DU)
+  soil_moist_top: 'GWETTOP',// Top Soil Wetness (0-1)
+  soil_moist_prof: 'GWETPROF',// Profile Soil Wetness (0-1)
+  sst: 'TS',                // Sea Surface Temp (°C)
 };
 
 function buildCalibratedFallback(
@@ -678,8 +809,8 @@ export async function fetchLiveNasaPowerData(
           let val = parameterData[key];
           // NASA fill value is -999
           if (typeof val === 'number' && val > -900) {
-            // PRECTOTCORR and EVLAND are returned in mm/day; convert to mm/month
-            if (nasaParam === 'PRECTOTCORR' || nasaParam === 'EVLAND') {
+            // PRECTOTCORR, EVLAND, and PRECSNO are returned in mm/day; convert to mm/month
+            if (nasaParam === 'PRECTOTCORR' || nasaParam === 'EVLAND' || nasaParam === 'PRECSNO') {
               const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
               val = val * daysInMonth;
             }
@@ -718,7 +849,7 @@ export async function fetchLiveNasaPowerData(
   }
 }
 
-const VARIABLE_CSV_KEYWORDS: Record<VariableId, string[]> = {
+const VARIABLE_CSV_KEYWORDS: Partial<Record<VariableId, string[]>> = {
   temp_air: ['raw_temp_air', 'temp_air', 't2m', 'air_temp', 'temp', 'temperature'],
   precip: ['raw_precip', 'precip', 'prectotcorr', 'prectot', 'rain', 'rainfall', 'precipitation'],
   ndvi: ['raw_ndvi', 'ndvi', 'greenness', 'vegetation', 'veg'],
@@ -768,7 +899,7 @@ function parseCsvStructure(csvText: string): { lines: string[]; sep: string; col
 }
 
 function findColumnForVariable(cols: string[], dateIdx: number, variableId: VariableId): number {
-  const keywords = VARIABLE_CSV_KEYWORDS[variableId];
+  const keywords = VARIABLE_CSV_KEYWORDS[variableId] || [];
   const exactIdx = cols.findIndex((c, idx) => idx !== dateIdx && keywords.includes(c));
   if (exactIdx !== -1) return exactIdx;
 
