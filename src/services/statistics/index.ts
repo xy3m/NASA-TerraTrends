@@ -18,19 +18,22 @@ import { normalPValue, tCDF, tQuantile } from './distributions';
 
 /**
  * Calculate Deseasonalized Anomalies and 12-Month Moving Averages
+ * Explicitly preserves null/missing (e.g. -999.0 polar night) time slots.
  */
-export function processTimeSeries(rawPoints: { date: string; value: number }[]): TimeSeriesPoint[] {
+export function processTimeSeries(rawPoints: { date: string; value: number | null }[]): TimeSeriesPoint[] {
   if (rawPoints.length === 0) return [];
 
   const points: TimeSeriesPoint[] = rawPoints.map(p => {
     const parts = p.date.split('-');
     const year = parseInt(parts[0], 10);
     const month = parseInt(parts[1], 10);
+    const isValid = p.value !== null && typeof p.value === 'number' && !isNaN(p.value) && isFinite(p.value);
     return {
       date: p.date,
       year,
       month,
-      raw: p.value,
+      raw: isValid ? p.value : null,
+      isMissing: !isValid,
     };
   });
 
@@ -40,7 +43,7 @@ export function processTimeSeries(rawPoints: { date: string; value: number }[]):
   }
 
   for (const p of points) {
-    if (monthlySums[p.month]) {
+    if (p.raw !== null && monthlySums[p.month]) {
       monthlySums[p.month].sum += p.raw;
       monthlySums[p.month].count += 1;
     }
@@ -52,6 +55,10 @@ export function processTimeSeries(rawPoints: { date: string; value: number }[]):
   }
 
   for (const p of points) {
+    if (p.raw === null) {
+      p.anomaly = undefined;
+      continue;
+    }
     const baseline = monthlyMeans[p.month] || 0;
     p.anomaly = +(p.raw - baseline).toFixed(3);
   }
@@ -60,40 +67,60 @@ export function processTimeSeries(rawPoints: { date: string; value: number }[]):
   const halfWindow = Math.floor(windowSize / 2);
 
   for (let i = 0; i < points.length; i++) {
+    if (points[i].raw === null) {
+      points[i].movingAvg = undefined;
+      continue;
+    }
     const start = Math.max(0, i - halfWindow);
     const end = Math.min(points.length, i + halfWindow);
     let sum = 0;
     let count = 0;
     for (let j = start; j < end; j++) {
-      sum += points[j].raw;
-      count++;
+      const val = points[j].raw;
+      if (val !== null) {
+        sum += val;
+        count++;
+      }
     }
-    points[i].movingAvg = count > 0 ? +(sum / count).toFixed(3) : points[i].raw;
+    points[i].movingAvg = count > 0 ? +(sum / count).toFixed(3) : undefined;
   }
 
   return points;
+}
+
+function getValidPointEntries(
+  points: TimeSeriesPoint[],
+  useAnomaly: boolean
+): { t: number; y: number; raw: number }[] {
+  const valid: { t: number; y: number; raw: number }[] = [];
+  for (const p of points) {
+    if (p.raw === null || !isFinite(p.raw)) continue;
+    const val = useAnomaly && p.anomaly !== undefined ? p.anomaly : p.raw;
+    if (!isFinite(val)) continue;
+    valid.push({
+      t: p.year + (p.month - 1) / 12,
+      y: val,
+      raw: p.raw,
+    });
+  }
+  return valid;
 }
 
 /**
  * Compute Theil-Sen Robust Slope Estimator
  */
 export function calculateTheilSenSlope(points: TimeSeriesPoint[], useAnomaly = true): number {
-  const n = points.length;
+  const valid = getValidPointEntries(points, useAnomaly);
+  const n = valid.length;
   if (n < 2) return 0;
 
   const slopes: number[] = [];
 
   for (let i = 0; i < n; i++) {
-    const t1 = points[i].year + (points[i].month - 1) / 12;
-    const y1 = useAnomaly && points[i].anomaly !== undefined ? points[i].anomaly! : points[i].raw;
-
     for (let j = i + 1; j < n; j++) {
-      const t2 = points[j].year + (points[j].month - 1) / 12;
-      const y2 = useAnomaly && points[j].anomaly !== undefined ? points[j].anomaly! : points[j].raw;
-
-      const dt = t2 - t1;
+      const dt = valid[j].t - valid[i].t;
       if (dt > 0.001) {
-        slopes.push((y2 - y1) / dt);
+        slopes.push((valid[j].y - valid[i].y) / dt);
       }
     }
   }
@@ -114,12 +141,11 @@ export function calculateMannKendall(points: TimeSeriesPoint[], useAnomaly = tru
   tau: number;
   pValue: number;
 } {
-  const n = points.length;
+  const values = getValidPointEntries(points, useAnomaly).map(e => e.y);
+  const n = values.length;
   if (n < 4) {
     return { s: 0, varS: 1, z: 0, tau: 0, pValue: 1 };
   }
-
-  const values = points.map(p => (useAnomaly && p.anomaly !== undefined ? p.anomaly! : p.raw));
 
   let s = 0;
   for (let k = 0; k < n - 1; k++) {
@@ -143,7 +169,7 @@ export function calculateMannKendall(points: TimeSeriesPoint[], useAnomaly = tru
     }
   }
 
-  const varS = (n * (n - 1) * (2 * n + 5) - tieTerm) / 18;
+  const varS = Math.max(1e-9, (n * (n - 1) * (2 * n + 5) - tieTerm) / 18);
 
   let z = 0;
   if (s > 0) {
@@ -170,13 +196,20 @@ export function analyzeTrend(
   coordinates: [number, number],
   useAnomaly = true
 ): TrendAnalysisResult {
-  const n = points.length;
-  if (n === 0) {
+  const totalSlots = points.length;
+  if (totalSlots === 0) {
     throw new Error('Cannot analyze empty time series');
   }
 
-  const times = points.map(p => p.year + (p.month - 1) / 12);
-  const values = points.map(p => (useAnomaly && p.anomaly !== undefined ? p.anomaly! : p.raw));
+  const valid = getValidPointEntries(points, useAnomaly);
+  const n = valid.length;
+  const missingCount = totalSlots - n;
+  if (n < 3) {
+    throw new Error('Insufficient valid observations in time series');
+  }
+
+  const times = valid.map(e => e.t);
+  const values = valid.map(e => e.y);
 
   const meanT = times.reduce((a, b) => a + b, 0) / n;
   const meanY = values.reduce((a, b) => a + b, 0) / n;
@@ -207,7 +240,7 @@ export function analyzeTrend(
   const df = Math.max(1, n - 2);
   const sErrSq = ssRes / df;
   const standardError = Math.sqrt(sErrSq);
-  const slopeSE = Math.sqrt(sErrSq / ssXX);
+  const slopeSE = ssXX > 0 ? Math.sqrt(sErrSq / ssXX) : 0;
 
   const tStatistic = slopeSE > 0 ? olsSlope / slopeSE : 0;
   const tPValue = 2 * (1 - tCDF(Math.abs(tStatistic), df));
@@ -219,12 +252,15 @@ export function analyzeTrend(
 
   const rawTCrit = tQuantile(0.975, df);
   const tCritical = isFinite(rawTCrit) ? rawTCrit : 1.96;
-  for (let i = 0; i < n; i++) {
-    const t = times[i];
+  for (let i = 0; i < totalSlots; i++) {
+    const t = points[i].year + (points[i].month - 1) / 12;
     const trendVal = olsSlope * t + olsIntercept;
     points[i].trend = +trendVal.toFixed(3);
 
-    const marginOfError = tCritical * standardError * Math.sqrt(1 / n + Math.pow(t - meanT, 2) / ssXX);
+    const marginOfError =
+      ssXX > 0
+        ? tCritical * standardError * Math.sqrt(1 / n + Math.pow(t - meanT, 2) / ssXX)
+        : 0;
     points[i].ciUpper = +(trendVal + marginOfError).toFixed(3);
     points[i].ciLower = +(trendVal - marginOfError).toFixed(3);
   }
@@ -234,7 +270,7 @@ export function analyzeTrend(
   const totalDurationYears = times[n - 1] - times[0];
   const totalChange = slopePerYear * totalDurationYears;
 
-  const rawMean = points.reduce((acc, p) => acc + p.raw, 0) / n;
+  const rawMean = valid.reduce((acc, p) => acc + p.raw, 0) / n;
   const percentChange = rawMean !== 0 ? (totalChange / Math.abs(rawMean)) * 100 : 0;
 
   let direction: 'Increasing' | 'Decreasing' | 'Stable' = 'Stable';
@@ -293,6 +329,7 @@ export function analyzeTrend(
     startDate: points[0].date,
     endDate: points[n - 1].date,
     sampleCount: n,
+    missingCount,
     slopePerYear: +slopePerYear.toFixed(4),
     slopePerDecade: +slopePerDecade.toFixed(3),
     sensSlopePerDecade: +sensSlopePerDecade.toFixed(3),

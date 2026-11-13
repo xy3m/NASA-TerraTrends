@@ -46,6 +46,11 @@
   font-family: 'Inter', sans-serif !important;
 }
 
+.leaflet-container .leaflet-tile {
+  max-width: none !important;
+  max-height: none !important;
+}
+
 .leaflet-popup-content-wrapper {
   background-color: #0f172a !important;
   color: #f1f5f9 !important;

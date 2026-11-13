@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { EarthVariable, HotspotRegion, TimeSeriesPoint, TrendAnalysisResult, VariableId } from '../types/earthScience';
-import { EARTH_VARIABLES, NASA_POWER_PARAM_MAP, detectCsvPrimaryVariable, extractCsvCoordinates, fetchLiveNasaPowerData, parseCustomCsv } from '../services/nasaData';
-import { analyzeTrend, processTimeSeries } from '../services/statistics';
-import { TimeSeriesChart } from './TimeSeriesChart';
-import { StatsSummaryCard } from './StatsSummaryCard';
+import { EarthVariable, HotspotRegion, ProvenanceTier, TimeSeriesPoint, VariableId } from '../types/earthScience';
+import { EARTH_VARIABLES, NASA_POWER_PARAM_MAP, detectCsvPrimaryVariable, extractCsvCoordinates, fetchLiveNasaPowerData, parseCustomCsv, parseCustomJson } from '../services/nasaData';
+import { connectorRegistry } from '../services/connectors';
+import { processTimeSeries } from '../services/statistics';
 import { 
   UploadCloud, 
   MapPin, 
@@ -23,7 +22,8 @@ interface CustomDataUploaderProps {
     variable: EarthVariable,
     points: TimeSeriesPoint[],
     isLiveNasa: boolean,
-    rawCsvText?: string
+    rawCsvText?: string,
+    provenanceMeta?: { tier: ProvenanceTier; sourceLabel?: string; statusMessage?: string }
   ) => void;
 }
 
@@ -98,7 +98,7 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
     return { lat, lon };
   };
 
-  // Handle Live NASA API fetch
+  // Handle Live NASA / Federated Connector API fetch
   const handleFetchLiveNasa = async () => {
     const parsedCoords = parseCoordinates();
     if (typeof parsedCoords === 'string') {
@@ -111,8 +111,35 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
     setApiFeedback(null);
 
     try {
-      const { points, isLiveNasa, statusMessage } = await fetchLiveNasaPowerData(lat, lon, selectedVarId);
       const targetVar = EARTH_VARIABLES.find(v => v.id === selectedVarId) || EARTH_VARIABLES[0];
+      const connector = connectorRegistry.getBestConnector(selectedVarId, lat, lon);
+
+      let points: TimeSeriesPoint[] = [];
+      let isLiveNasa = false;
+      let statusMessage = '';
+      let provenanceTier: ProvenanceTier = 'reanalysis_model';
+      let sourceLabel = 'NASA POWER';
+
+      if (connector?.capabilities.timeSeries) {
+        const res = await connector.fetchTimeSeries({ lat, lon, variableId: selectedVarId });
+        const validCount = res.points.filter(p => p.raw !== null).length;
+        if (validCount >= 24) {
+          points = res.points;
+          isLiveNasa = true;
+          statusMessage = res.statusMessage;
+          provenanceTier = res.provenance;
+          sourceLabel = res.sourceLabel;
+        }
+      }
+
+      if (points.length === 0) {
+        const fallback = await fetchLiveNasaPowerData(lat, lon, selectedVarId);
+        points = fallback.points;
+        isLiveNasa = fallback.isLiveNasa;
+        statusMessage = fallback.statusMessage;
+        provenanceTier = fallback.isLiveNasa ? 'reanalysis_model' : 'synthetic_demo';
+        sourceLabel = fallback.isLiveNasa ? 'NASA POWER' : 'Geo-Iris Calibrated Fallback';
+      }
 
       const customRegion: HotspotRegion = {
         id: `coord_${lat.toFixed(2)}_${lon.toFixed(2)}`,
@@ -120,12 +147,16 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
         countryOrOcean: 'Custom Coordinates',
         coordinates: [lat, lon],
         category: 'Urban',
-        description: `Direct NASA Earth Science observation query for ${lat.toFixed(2)}°, ${lon.toFixed(2)}°`,
+        description: `Direct Earth Science observation query via ${sourceLabel} for ${lat.toFixed(2)}°, ${lon.toFixed(2)}°`,
         keyPhenomenon: 'Geographic Trend Exploration',
         primaryVariable: selectedVarId,
       };
 
-      onAnalyzeCustomData(customRegion, targetVar, points, isLiveNasa);
+      onAnalyzeCustomData(customRegion, targetVar, points, isLiveNasa, undefined, {
+        tier: provenanceTier,
+        sourceLabel,
+        statusMessage,
+      });
       setApiFeedback(statusMessage);
     } catch (err: any) {
       setApiFeedback(`Error retrieving NASA data: ${err.message || err}`);
@@ -134,7 +165,7 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
     }
   };
 
-  // Handle CSV file upload
+  // Handle CSV or JSON file upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -142,13 +173,45 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      if (text) {
-        setCsvText(text);
-        setCustomDatasetName(file.name.replace(/\.[^/.]+$/, ''));
-        const detectedVar = detectCsvPrimaryVariable(text);
-        if (detectedVar) {
-          setSelectedVarId(detectedVar);
+      if (!text) return;
+      const cleanName = file.name.replace(/\.[^/.]+$/, '');
+      setCustomDatasetName(cleanName);
+
+      if (file.name.toLowerCase().endsWith('.json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
+        try {
+          const parsedJson = parseCustomJson(text);
+          const processed = processTimeSeries(parsedJson.points);
+          const varId = parsedJson.detectedVariable ?? selectedVarId;
+          const targetVar = EARTH_VARIABLES.find(v => v.id === varId) || EARTH_VARIABLES[0];
+          const coords: [number, number] = parsedJson.coordinates ?? [0, 0];
+          const customRegion: HotspotRegion = {
+            id: `csv_${Date.now()}`,
+            name: parsedJson.regionName || cleanName || 'User JSON Dataset',
+            countryOrOcean: parsedJson.coordinates ? 'JSON Station Series' : 'Uploaded JSON Series',
+            coordinates: coords,
+            hasCoordinates: Boolean(parsedJson.coordinates),
+            category: 'Agricultural',
+            description: 'User-imported JSON time series',
+            keyPhenomenon: 'Custom Time Series Significance Test',
+            primaryVariable: varId,
+          };
+          setCsvError(null);
+          onAnalyzeCustomData(customRegion, targetVar, processed, false, undefined, {
+            tier: 'user_upload',
+            sourceLabel: file.name,
+            statusMessage: `Loaded ${processed.length} observations from JSON upload (${file.name}).`,
+          });
+          return;
+        } catch (err: any) {
+          setCsvError(err.message || 'Failed to parse JSON upload');
+          return;
         }
+      }
+
+      setCsvText(text);
+      const detectedVar = detectCsvPrimaryVariable(text);
+      if (detectedVar) {
+        setSelectedVarId(detectedVar);
       }
     };
     reader.readAsText(file);
@@ -373,8 +436,8 @@ export const CustomDataUploader: React.FC<CustomDataUploaderProps> = ({
             </div>
 
             <label className="cursor-pointer px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors">
-              <span>Choose CSV File</span>
-              <input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" />
+              <span>Choose CSV / JSON File</span>
+              <input type="file" accept=".csv,.txt,.json" onChange={handleFileUpload} className="hidden" />
             </label>
           </div>
 

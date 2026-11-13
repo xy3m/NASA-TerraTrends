@@ -1,5 +1,5 @@
 import { Matrix, SVD, inverse } from 'ml-matrix';
-import { RegressionResult, PCAResult } from '../../types/earthScience';
+import { RegressionResult, PCAResult, NonlinearRegressionResult } from '../../types/earthScience';
 import { tCDF, fCDF } from './distributions';
 
 /**
@@ -234,6 +234,168 @@ export function pcaAnalysis(data: number[][], _labels?: string[]): PCAResult {
     loadings,
     scores,
     componentLabels,
+  };
+}
+
+/**
+ * Bounded Nonlinear Least-Squares Regression via Levenberg-Marquardt / Closed-Form Transforms.
+ * Supports Exponential, Logarithmic, Power-Law, Quadratic, and Sigmoidal Logistic curves.
+ */
+export function nonlinearRegression(
+  xRaw: number[],
+  yRaw: number[],
+  model: 'exponential' | 'logarithmic' | 'power' | 'quadratic' | 'logistic'
+): NonlinearRegressionResult {
+  const paired = xRaw
+    .map((x, i) => ({ x, y: yRaw[i] }))
+    .filter(p => isFinite(p.x) && isFinite(p.y));
+  const n = paired.length;
+  if (n < 5) {
+    throw new Error('At least 5 valid (X, Y) pairs are required for nonlinear regression.');
+  }
+
+  const x = paired.map(p => p.x);
+  const y = paired.map(p => p.y);
+  const yMean = y.reduce((s, v) => s + v, 0) / n;
+  const ssTot = y.reduce((s, v) => s + (v - yMean) ** 2, 0);
+
+  const solveLinear = (design: number[][], rhs: number[]): number[] => {
+    const X = new Matrix(design);
+    const yV = Matrix.columnVector(rhs);
+    const Xt = X.transpose();
+    const p = design[0].length;
+    const beta = inverse(Xt.mmul(X).add(Matrix.eye(p, p).mul(1e-7))).mmul(Xt).mmul(yV);
+    return Array.from({ length: p }, (_, i) => beta.get(i, 0));
+  };
+
+  let params: number[] = [];
+  let paramLabels: string[] = [];
+  let equation = '';
+  let evalFn: (xi: number, p: number[]) => number;
+
+  if (model === 'quadratic') {
+    const beta = solveLinear(x.map(xi => [1, xi, xi * xi]), y);
+    params = beta;
+    paramLabels = ['a (Intercept)', 'b (Linear)', 'c (Quadratic)'];
+    equation = `y = ${beta[0].toFixed(3)} + ${beta[1].toFixed(4)}x + ${beta[2].toFixed(5)}x²`;
+    evalFn = (xi, p) => p[0] + p[1] * xi + p[2] * xi * xi;
+  } else if (model === 'logarithmic') {
+    const xMin = Math.min(...x);
+    const shift = xMin <= 0 ? Math.abs(xMin) + 1 : 0;
+    const beta = solveLinear(x.map(xi => [1, Math.log(xi + shift)]), y);
+    params = shift > 0 ? [beta[0], beta[1], shift] : [beta[0], beta[1]];
+    paramLabels = shift > 0 ? ['a', 'b', 'x_shift'] : ['a', 'b'];
+    equation =
+      shift > 0
+        ? `y = ${beta[0].toFixed(3)} + ${beta[1].toFixed(3)} ln(x + ${shift.toFixed(1)})`
+        : `y = ${beta[0].toFixed(3)} + ${beta[1].toFixed(3)} ln(x)`;
+    evalFn = (xi, p) => p[0] + p[1] * Math.log(Math.max(1e-6, xi + (p[2] ?? 0)));
+  } else {
+    // Bounded Levenberg-Marquardt damped Gauss-Newton solver for true nonlinear models
+    const xMin = Math.min(...x);
+    const xSpan = Math.max(1e-4, Math.max(...x) - xMin);
+    const u = x.map(xi => (xi - xMin) / xSpan); // normalize x to [0, 1] for stability
+    const yMin = Math.min(...y);
+    const yMax = Math.max(...y);
+    const ySpan = Math.max(1e-4, yMax - yMin);
+
+    let theta: number[];
+    let bounds: [number, number][];
+    let fNorm: (ui: number, p: number[]) => number;
+
+    if (model === 'exponential') {
+      theta = [Math.max(1e-3, y[0] - yMin + 0.1 * ySpan), 0.25, yMin - 0.05 * ySpan];
+      bounds = [[1e-4, 20 * ySpan], [-8.0, 8.0], [yMin - 5 * ySpan, yMax + 2 * ySpan]];
+      fNorm = (ui, p) => p[2] + p[0] * Math.exp(Math.max(-20, Math.min(20, p[1] * ui)));
+    } else if (model === 'power') {
+      theta = [ySpan, 1.0, yMin];
+      bounds = [[-15 * ySpan, 15 * ySpan], [-4.0, 5.0], [yMin - 5 * ySpan, yMax + 5 * ySpan]];
+      fNorm = (ui, p) => p[2] + p[0] * Math.pow(ui + 0.05, p[1]);
+    } else {
+      // Logistic growth / saturation curve: c + L / (1 + exp(-k*(u - u0)))
+      theta = [ySpan, 5.0, 0.5, yMin];
+      bounds = [[1e-4, 4 * ySpan], [-25.0, 25.0], [-0.5, 1.5], [yMin - 2 * ySpan, yMax]];
+      fNorm = (ui, p) => p[3] + p[0] / (1 + Math.exp(-Math.max(-25, Math.min(25, p[1] * (ui - p[2])))));
+    }
+
+    const sse = (p: number[]) =>
+      u.reduce((acc, ui, idx) => acc + (y[idx] - fNorm(ui, p)) ** 2, 0);
+
+    let lambda = 1e-2;
+    let bestErr = sse(theta);
+    const m = theta.length;
+    const eps = 1e-5;
+
+    for (let iter = 0; iter < 60; iter++) {
+      const res = u.map((ui, idx) => y[idx] - fNorm(ui, theta));
+      const J: number[][] = Array.from({ length: n }, () => Array(m).fill(0));
+      for (let j = 0; j < m; j++) {
+        const pPlus = [...theta];
+        pPlus[j] += eps;
+        for (let i = 0; i < n; i++) {
+          J[i][j] = (fNorm(u[i], pPlus) - fNorm(u[i], theta)) / eps;
+        }
+      }
+
+      const JMat = new Matrix(J);
+      const Jt = JMat.transpose();
+      const A = Jt.mmul(JMat).add(Matrix.eye(m, m).mul(lambda));
+      const grad = Jt.mmul(Matrix.columnVector(res));
+      let delta: Matrix;
+      try {
+        delta = inverse(A).mmul(grad);
+      } catch {
+        lambda *= 10;
+        continue;
+      }
+
+      const candidate = theta.map((v, j) =>
+        Math.max(bounds[j][0], Math.min(bounds[j][1], v + delta.get(j, 0)))
+      );
+      const candErr = sse(candidate);
+      if (candErr < bestErr) {
+        const relImp = (bestErr - candErr) / Math.max(1e-9, bestErr);
+        theta = candidate;
+        bestErr = candErr;
+        lambda = Math.max(1e-6, lambda * 0.4);
+        if (relImp < 1e-7) break;
+      } else {
+        lambda = Math.min(1e4, lambda * 5);
+      }
+    }
+
+    params = theta;
+    if (model === 'exponential') {
+      paramLabels = ['a (Scale)', 'b (Normalized Rate)', 'c (Asymptote)'];
+      equation = `y = ${theta[2].toFixed(3)} + ${theta[0].toFixed(3)} exp(${theta[1].toFixed(3)}·u)`;
+    } else if (model === 'power') {
+      paramLabels = ['a (Scale)', 'b (Exponent)', 'c (Offset)'];
+      equation = `y = ${theta[2].toFixed(3)} + ${theta[0].toFixed(3)} (u+0.05)^${theta[1].toFixed(3)}`;
+    } else {
+      paramLabels = ['L (Amplitude)', 'k (Steepness)', 'u0 (Midpoint frac)', 'c (Floor)'];
+      equation = `y = ${theta[3].toFixed(3)} + ${theta[0].toFixed(3)} / (1 + exp(-${theta[1].toFixed(2)}(u - ${theta[2].toFixed(2)})))`;
+    }
+    evalFn = (xi, p) => fNorm((xi - xMin) / xSpan, p);
+  }
+
+  const predictedValues = x.map(xi => evalFn(xi, params));
+  const residuals = y.map((yi, i) => yi - predictedValues[i]);
+  const ssRes = residuals.reduce((s, r) => s + r * r, 0);
+  const rSquared = ssTot > 0 ? Math.max(0, Math.min(1, 1 - ssRes / ssTot)) : 0;
+  const rmse = Math.sqrt(ssRes / n);
+  const kParams = params.length;
+  const aic = n * Math.log(Math.max(1e-12, ssRes / n)) + 2 * kParams;
+
+  return {
+    model,
+    equation,
+    paramLabels,
+    params,
+    rSquared,
+    rmse,
+    aic,
+    predictedValues,
+    residuals,
   };
 }
 

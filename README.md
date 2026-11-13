@@ -23,27 +23,58 @@
   - **95% Confidence Interval Band** around the trend line.
 - **6. "Opposite Regional Trends" Engine**: Directly addresses the core challenge paradox: *"a measured Earth science data variable can trend one way in one region and the opposite way in another, even when the same process drives both"* (e.g. Clausius-Clapeyron warming causing the wet to get wetter in monsoon zones while the dry subtropics desiccate).
 - **7. "Data Detective" Student Mystery Mode**: 4 interactive gamified mystery dossiers with step-by-step briefings, orbital clues, comprehension questions, and official NASA Data Detective Certification badges.
-- **8. Custom Data Studio & Exporter**: Paste or upload custom CSV time series from local weather stations, export publication-ready datasets (CSV/JSON), and print/save scientific dossiers.
+- **8. Custom Data Studio & Exporter**: Paste or upload custom CSV/JSON time series from local weather stations, export publication-ready datasets (CSV/JSON), and print/save scientific dossiers.
+- **9. Statistical Analysis Lab (Phase 1 Completed)**:
+  - **Inferential & Regression**: One-sample ($\mu_0$), two-sample, and paired t-tests; One-Way & **Two-Way Factorial ANOVA**; Multiple OLS, Huber/Bisquare IRLS, and **Nonlinear Regression** (exponential, logarithmic, power, quadratic, logistic via bounded Levenberg-Marquardt).
+  - **Multivariate & Time-Series**: PCA with Scree plot, Factor Loadings matrix & PC1/PC2 Score Biplot; Hamed-Rao & **TFPW (Yue et al., 2002)** autocorrelated Mann-Kendall; Trend Acceleration & **Reversal Point $t^*$**; Pettitt & CUSUM change points; **GEV Extreme Value L-Moments fit**; selectable residual diagnostics (Ljung-Box Q & p, Shapiro-Wilk, IQR/Z-Score/Grubbs outlier detection).
+  - **Provenance & Missing Data Fidelity**: Preserves `-999.0` polar-night/satellite gaps as explicit `null` slots (`spanGaps: false`) and labels provenance tier (`SAT OBS`, `REANALYSIS`, `USER CSV/JSON`, `DEMO`).
+- **10. Earth Compute Lab & FastAPI Backend (Python)**:
+  - **Auto-SARIMAX & STL Decomposition**: Kalman state-space forecasting handling native `NaN` gaps, 80%/95% prediction intervals, Ljung-Box diagnostics, and holdout backtest.
+  - **Bayesian Adaptive MCMC**: Multi-chain Metropolis-within-Gibbs (`robust_ar1` Student-t + `changepoint` hinge) with split-$\hat{R}$, Bulk ESS, 95% HDI, and $P(\text{slope} > 0)$.
+  - **Extreme Value Modeling**: SciPy MLE `GEV` (Block Maxima) & `GPD` (Peaks-Over-Threshold) with parametric bootstrap 95% CIs and KS goodness-of-fit.
+  - **Gridded Spatial FDR (Wilks, 2016)**: Vectorized per-pixel Mann-Kendall across 3D grids/cubes with Benjamini-Yekutieli / BH / Holm / Bonferroni pruning and interactive pixel inspector.
+  - **Geospatial Rasters & SAR (`rasterio`)**: DEM Differencing (DoD erosion/deposition volume & LoD mask), Adaptive Lee speckle filter + SAR log-ratio change detection + keyless NASA ASF catalog search, and LULC transition matrices ($\kappa$).
+  - **NASA Live Fire, Atmosphere & NetCDF4 (`xarray`)**: FIRMS MAP_KEY proxy + keyless NASA EONET v3 wildfires, Domain 1 AIRS/MERRA-2 vertical sounding profiles, Domain 11 trace gases ($\text{NO}_2, \text{CH}_4, \text{CO}, \text{SO}_2$), NetCDF4/HDF5 inspection & extraction, and AppEEARS task proxy.
 
 ---
 
 ## 🚀 Quickstart & Local Setup
 
-No API keys or `.env` configuration are required. All map basemaps and the NASA POWER endpoint are public and keyless.
-
-### Install & Start Locally
+### Frontend (Browser + Keyless Client Connectors)
 ```bash
 # 1. Install dependencies
 npm install
 
-# 2. Start the development server
+# 2. Start the development server (proxies /api -> http://127.0.0.1:8000)
 npm run dev
 ```
 
-Once running, open your browser at:
+Open your browser at:
 ```text
 http://localhost:3000/
 ```
+
+### Earth Compute Backend (Python 3.11+ / FastAPI Compute Engine)
+All core Statistical Analysis Lab features and keyless client connectors work standalone in the browser. To unlock Earth Compute Lab server-side modeling (SARIMA, Bayesian MCMC, GEV/GPD, Spatial FDR, DEM/SAR/LULC GeoTIFFs, NetCDF4/HDF5 `xarray`, FIRMS/ASF/CMR proxies):
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+Or run the backend in Docker:
+```bash
+cd backend
+docker build -t geo-iris-backend .
+docker run -p 8000:8000 --env-file .env geo-iris-backend
+```
+
+#### Optional Credentials (`backend/.env` or Session Auth UI)
+Keyless NASA APIs (`NASA POWER`, `EONET v3 Wildfires`, `CMR Granules`, `ASF SAR Search`) work with zero keys. For authenticated feeds, copy `backend/.env.example` to `backend/.env` or enter session-only keys in the Earth Compute Lab UI:
+- `NASA_FIRMS_MAP_KEY`: Enables sub-km VIIRS / MODIS active fire FRP queries.
+- `EARTHDATA_TOKEN` (or `EARTHDATA_USERNAME` / `EARTHDATA_PASSWORD`): Enables authenticated AppEEARS task submission & Earthdata access.
+- `VITE_BACKEND_URL` (frontend optional): Set when deploying static frontend separately from FastAPI (defaults to Vite `/api` proxy locally).
 
 ### Build & Preview Commands
 ```bash
@@ -124,42 +155,53 @@ Q_{\text{med}} = \text{median} \left\{ \frac{y_j - y_i}{t_j - t_i} \right\} \qua
 ## 🏛️ Project Structure
 ```text
 Geo-Iris/
+├── backend/                         # Phase 2 Python FastAPI compute engine
+│   ├── app/
+│   │   ├── main.py                  # FastAPI entrypoint, CORS, /api/v1 routers
+│   │   ├── config.py & schemas.py   # Settings & Pydantic v2 request schemas
+│   │   ├── routers/                 # health/auth, stats, firms, earthdata, rasters
+│   │   └── services/                # SARIMAX, MCMC, GEV/GPD, FDR, FIRMS, xarray, rasterio
+│   ├── tests/                       # Pytest unit & FastAPI TestClient suite
+│   ├── requirements.txt             # Python scientific dependencies
+│   ├── .env.example                 # Optional Earthdata & FIRMS keys template
+│   └── Dockerfile                   # Container image with GDAL/HDF5 support
 ├── public/
 │   ├── favicon.svg
 │   └── icons.svg
 ├── src/
-│   ├── assets/
-│   │   ├── hero.png
-│   │   ├── typescript.svg
-│   │   └── vite.svg
 │   ├── types/
 │   │   └── earthScience.ts          # Type definitions for variables, regions, stats
 │   ├── services/
-│   │   ├── statistics.ts            # Mann-Kendall, Sen's slope, OLS, CI, deseasonalization
-│   │   ├── nasaData.ts              # NASA POWER API client & calibrated datasets
+│   │   ├── statistics/              # Modular MK, TFPW, Hamed-Rao, ANOVA, LM nonlinear, GEV, PCA
+│   │   ├── connectors/              # NASA POWER, ORNL MODIS, NOAA Tides, USGS Water, GIBS
+│   │   ├── phase2Api.ts             # Typed REST client for Phase 2 backend (/api/v1/*)
+│   │   ├── nasaData.ts              # NASA POWER API client & CSV/JSON parsers
 │   │   ├── detectiveCases.ts        # 4 interactive student mystery files
 │   │   └── regionalContrasts.ts     # Opposite regional trend paired scenarios
+│   ├── workers/                     # Off-thread statistical Web Worker + client
 │   ├── components/
+│   │   ├── Phase2Lab/               # Earth Compute Lab UI (SARIMA/MCMC/EVT, Spatial FDR, DEM/SAR/LULC, FIRMS, NetCDF4)
+│   │   ├── StatisticalLab/          # Univariate, Multivariate, Inferential, Regression, Diagnostics
 │   │   ├── Navbar.tsx               # Navigation, GEOIRIS branding, API status
 │   │   ├── EarthMap.tsx             # Interactive Leaflet map & coordinate picker
 │   │   ├── VariableSelector.tsx     # Mission badges, category filters & simple definitions
-│   │   ├── TimeSeriesChart.tsx      # Chart.js time series with layers & CI bands
+│   │   ├── TimeSeriesChart.tsx      # Chart.js time series with layers, gap preservation & GIBS
 │   │   ├── SignificanceBadge.tsx    # Statistical badges & explainer modal
-│   │   ├── StatsSummaryCard.tsx     # 4-card metric breakdown (rate, MK, t-test, OLS)
+│   │   ├── StatsSummaryCard.tsx     # Metric cards with provenance & missingness badge
 │   │   ├── PlainEnglishSummary.tsx  # Data Detective verdict & physical drivers
 │   │   ├── DetectiveMode.tsx        # Gamified student mystery investigation
 │   │   ├── RegionalContrastView.tsx # Side-by-side opposite trend solver
 │   │   ├── VariableEncyclopedia.tsx # Satellite & model directory & glossary
-│   │   ├── CustomDataUploader.tsx   # Live coordinate query & CSV uploader
+│   │   ├── CustomDataUploader.tsx   # Connector-routed coordinate query & CSV/JSON uploader
 │   │   └── DataExportModal.tsx      # CSV, JSON, and print dossier generator
-│   ├── App.tsx                      # Root application layout & state manager
+│   ├── App.tsx                      # Root application layout, provenance & mode routing
 │   ├── main.tsx                     # React application entry point
 │   ├── index.css                    # Tailwind CSS v4 styling & GEOIRIS dark palette
 │   └── vite-env.d.ts                # Vite client environment types
 ├── index.html                       # HTML5 template with GEOIRIS metadata
 ├── package.json                     # Dependencies & scripts
 ├── tsconfig.json                    # TypeScript compiler options
-└── vite.config.ts                   # Vite bundler configuration
+└── vite.config.ts                   # Vite bundler + /api proxy configuration
 ```
 
 ---

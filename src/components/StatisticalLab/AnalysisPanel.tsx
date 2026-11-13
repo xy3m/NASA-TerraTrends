@@ -7,9 +7,12 @@ export type AnalysisCategory =
   | 'correlation'
   | 'ttest'
   | 'anova'
+  | 'two_way_anova'
   | 'regression'
+  | 'nonlinear'
   | 'pca'
   | 'trend'
+  | 'extremes'
   | 'changepoint'
   | 'fdr';
 
@@ -22,6 +25,10 @@ export interface AnalysisConfig {
   bootstrapStat: 'mean' | 'median';
   seasonLength: number;
   regressionMethod: 'ols' | 'robust';
+  nonlinearModel: 'exponential' | 'logarithmic' | 'power' | 'quadratic' | 'logistic';
+  ttestPaired: boolean;
+  ttestMu0: number;
+  gevBlockSize: number;
   trendMethod: 'standard' | 'hamed_rao' | 'tfpw';
 }
 
@@ -48,6 +55,10 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   const [bootstrapStat, setBootstrapStat] = useState<'mean' | 'median'>('mean');
   const [seasonLength, setSeasonLength] = useState<number>(12);
   const [regressionMethod, setRegressionMethod] = useState<'ols' | 'robust'>('ols');
+  const [nonlinearModel, setNonlinearModel] = useState<'exponential' | 'logarithmic' | 'power' | 'quadratic' | 'logistic'>('exponential');
+  const [ttestPaired, setTtestPaired] = useState<boolean>(false);
+  const [ttestMu0, setTtestMu0] = useState<number>(0);
+  const [gevBlockSize, setGevBlockSize] = useState<number>(12);
   const [trendMethod, setTrendMethod] = useState<'standard' | 'hamed_rao' | 'tfpw'>('standard');
 
   const analysisOptions: { id: AnalysisCategory; label: string; icon: React.ReactNode; desc: string }[] = [
@@ -67,7 +78,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       id: 'ttest',
       label: 't-Test Comparison',
       icon: <GitFork className="w-4 h-4 text-indigo-400" />,
-      desc: '1-sample vs baseline or 2-sample Welch / paired t-test',
+      desc: '1-sample (μ0) or 2-sample Welch / Paired t-test',
     },
     {
       id: 'anova',
@@ -76,22 +87,40 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       desc: 'Variance comparison across multiple experimental groups',
     },
     {
+      id: 'two_way_anova',
+      label: 'Two-Way ANOVA',
+      icon: <Layers className="w-4 h-4 text-fuchsia-400" />,
+      desc: 'Factorial Factor A, Factor B & A×B interaction test',
+    },
+    {
       id: 'regression',
       label: 'Multiple Regression',
       icon: <TrendingUp className="w-4 h-4 text-amber-400" />,
       desc: 'Ordinary Least Squares & Huber Robust IRLS with VIF & DW',
     },
     {
+      id: 'nonlinear',
+      label: 'Nonlinear Curve Fit',
+      icon: <TrendingUp className="w-4 h-4 text-pink-400" />,
+      desc: 'Exponential, Logarithmic, Power, Quadratic & Logistic LM fit',
+    },
+    {
       id: 'pca',
       label: 'PCA Dimension Reduction',
       icon: <Layers className="w-4 h-4 text-rose-400" />,
-      desc: 'SVD-based Principal Component Analysis and loadings',
+      desc: 'SVD-based Principal Component Analysis, scree & loadings',
     },
     {
       id: 'trend',
       label: 'Trend & Seasonal MK',
       icon: <TrendingUp className="w-4 h-4 text-cyan-400" />,
-      desc: 'Seasonal Mann-Kendall, Hamed-Rao correction & exact Sen slope',
+      desc: 'Seasonal MK, Hamed-Rao, TFPW, Sen slope & reversal point',
+    },
+    {
+      id: 'extremes',
+      label: 'Extreme Value (GEV)',
+      icon: <BarChart3 className="w-4 h-4 text-red-400" />,
+      desc: 'Block-maxima GEV L-moments & 2–100 period return levels',
     },
     {
       id: 'changepoint',
@@ -125,6 +154,10 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       bootstrapStat,
       seasonLength,
       regressionMethod,
+      nonlinearModel,
+      ttestPaired,
+      ttestMu0,
+      gevBlockSize,
       trendMethod,
     });
   };
@@ -185,15 +218,21 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         {(selectedType === 'correlation' ||
           selectedType === 'ttest' ||
           selectedType === 'anova' ||
+          selectedType === 'two_way_anova' ||
           selectedType === 'regression' ||
+          selectedType === 'nonlinear' ||
           selectedType === 'pca' ||
           selectedType === 'fdr') && (
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-300 block">
               {selectedType === 'regression'
                 ? 'Independent Predictors (X1, X2...)'
+                : selectedType === 'nonlinear'
+                ? 'Independent Predictor (X — defaults to time index if empty)'
+                : selectedType === 'two_way_anova'
+                ? 'Factor A & Factor B Columns (split Low/High at median; optional)'
                 : selectedType === 'ttest'
-                ? 'Comparison Group (Sample B)'
+                ? 'Comparison Group (Sample B — leave unselected for 1-sample vs μ₀)'
                 : 'Additional Columns (select multiple)'}
             </label>
             <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 bg-[#030915] rounded-xl border border-slate-800">
@@ -319,6 +358,74 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
               <option value="ols">Ordinary Least Squares</option>
               <option value="robust">Huber Robust IRLS</option>
             </select>
+          </div>
+        )}
+
+        {/* Nonlinear options */}
+        {selectedType === 'nonlinear' && (
+          <div>
+            <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">
+              Nonlinear Curve Family
+            </label>
+            <select
+              value={nonlinearModel}
+              onChange={e => setNonlinearModel(e.target.value as any)}
+              className="w-full bg-[#030915] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+            >
+              <option value="exponential">Exponential (c + a·e^(bx))</option>
+              <option value="logarithmic">Logarithmic (a + b·ln(x))</option>
+              <option value="power">Power Law (c + a·x^b)</option>
+              <option value="quadratic">Quadratic (a + bx + cx²)</option>
+              <option value="logistic">Logistic Saturation (S-Curve)</option>
+            </select>
+          </div>
+        )}
+
+        {/* t-Test Paired / Mu0 options */}
+        {selectedType === 'ttest' && (
+          <>
+            <div>
+              <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">
+                2-Sample Mode
+              </label>
+              <select
+                value={ttestPaired ? 'paired' : 'welch'}
+                onChange={e => setTtestPaired(e.target.value === 'paired')}
+                className="w-full bg-[#030915] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+              >
+                <option value="welch">Unpaired Welch's t</option>
+                <option value="paired">Paired Observations t</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">
+                1-Sample Hypothesized μ₀
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={ttestMu0}
+                onChange={e => setTtestMu0(parseFloat(e.target.value) || 0)}
+                className="w-full bg-[#030915] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono"
+              />
+            </div>
+          </>
+        )}
+
+        {/* Extreme Value GEV options */}
+        {selectedType === 'extremes' && (
+          <div>
+            <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">
+              Block Maxima Window
+            </label>
+            <input
+              type="number"
+              min={2}
+              max={60}
+              value={gevBlockSize}
+              onChange={e => setGevBlockSize(parseInt(e.target.value, 10) || 12)}
+              className="w-full bg-[#030915] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono"
+            />
           </div>
         )}
       </div>

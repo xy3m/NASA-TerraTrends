@@ -107,7 +107,8 @@ export interface TimeSeriesPoint {
   date: string; // YYYY-MM
   year: number;
   month: number;
-  raw: number;
+  raw: number | null;
+  isMissing?: boolean;
   movingAvg?: number; // 12-month rolling mean
   anomaly?: number;   // deseasonalized baseline anomaly
   trend?: number;     // linear regression value
@@ -159,8 +160,11 @@ export interface TrendAnalysisResult {
   plainEnglishVerdict: string;
   scientificImplication: string;
 
-  // Provenance
+  // Provenance & Missingness
   provenance?: ProvenanceTier;
+  provenanceSource?: string;
+  statusMessage?: string;
+  missingCount?: number;
 }
 
 // ── Connector Registry Types ──────────────────────────────────────────
@@ -334,4 +338,36 @@ export interface RegionalContrastScenario {
     mechanism: string;
   };
   scientificTakeaway: string;
+}
+
+export interface TwoWayAnovaResult {
+  factorALabel: string;
+  factorBLabel: string;
+  factorA: { f: number; df: number; ss: number; ms: number; pValue: number };
+  factorB: { f: number; df: number; ss: number; ms: number; pValue: number };
+  interaction: { f: number; df: number; ss: number; ms: number; pValue: number };
+  within: { df: number; ss: number; ms: number };
+  grandMean: number;
+  cellMeans: { levelA: string; levelB: string; mean: number; n: number }[];
+}
+
+export interface NonlinearRegressionResult {
+  model: 'exponential' | 'logarithmic' | 'power' | 'quadratic' | 'logistic';
+  equation: string;
+  paramLabels: string[];
+  params: number[];
+  rSquared: number;
+  rmse: number;
+  aic: number;
+  predictedValues: number[];
+  residuals: number[];
+}
+
+export interface GEVResult {
+  shapeXi: number;
+  locationMu: number;
+  scaleSigma: number;
+  family: 'Frechet (heavy-tailed)' | 'Gumbel (light-tailed)' | 'Weibull (bounded)';
+  blockMaxima: number[];
+  returnLevels: { period: number; level: number }[];
 }

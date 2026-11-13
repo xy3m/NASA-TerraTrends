@@ -15,6 +15,8 @@ import {
   seasonalMannKendall,
   senSlopeExact,
   pettittChangePoint,
+  nonlinearRegression,
+  fitGEV,
 } from '../services/statistics';
 
 export interface StatsWorkerRequest {
@@ -25,7 +27,9 @@ export interface StatsWorkerRequest {
     | 'seasonalMK'
     | 'pca'
     | 'pettitt'
-    | 'descriptive';
+    | 'descriptive'
+    | 'nonlinear'
+    | 'gev';
   payload: Record<string, unknown>;
 }
 
@@ -97,6 +101,22 @@ self.onmessage = (event: MessageEvent<StatsWorkerRequest>) => {
       case 'descriptive': {
         const { values } = payload as { values: number[] };
         result = computeDescriptiveStats(values);
+        break;
+      }
+
+      case 'nonlinear': {
+        const { x, y, model } = payload as {
+          x: number[];
+          y: number[];
+          model: 'exponential' | 'logarithmic' | 'power' | 'quadratic' | 'logistic';
+        };
+        result = nonlinearRegression(x, y, model);
+        break;
+      }
+
+      case 'gev': {
+        const { values, blockSize } = payload as { values: number[]; blockSize?: number };
+        result = fitGEV(values, blockSize ?? 12);
         break;
       }
 

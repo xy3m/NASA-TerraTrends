@@ -8,10 +8,11 @@ import { Matrix, inverse } from 'ml-matrix';
 export function runDiagnostics(
   values: number[],
   residuals?: number[],
-  X?: number[][]
+  X?: number[][],
+  outlierMethod: 'iqr' | 'zscore' | 'grubbs' = 'iqr'
 ): DiagnosticResults {
   const norm = dagostinoTest(values);
-  const outliers = detectOutliers(values, 'iqr');
+  const outliers = detectOutliers(values, outlierMethod);
   const missing = missingnessProfile(values);
 
   const res = residuals && residuals.length > 0 ? residuals : values;
