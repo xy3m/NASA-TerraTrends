@@ -122,7 +122,6 @@ export const EarthMap: React.FC<EarthMapProps> = ({
     }
 
     if (gibsLayerRef.current && mapInstanceRef.current) {
-      gibsLayerRef.current.off();
       mapInstanceRef.current.removeLayer(gibsLayerRef.current);
       gibsLayerRef.current = null;
     }
@@ -149,7 +148,7 @@ export const EarthMap: React.FC<EarthMapProps> = ({
       selection.layer.service === 'wms'
         ? L.tileLayer.wms(GIBS_WMS_URL, {
             ...commonOpts,
-            layers: selection.layer.id,
+            layers: selection.layer.wmsLayers ?? selection.layer.id,
             format: 'image/png',
             transparent: true,
             version: '1.3.0',
@@ -261,6 +260,12 @@ export const EarthMap: React.FC<EarthMapProps> = ({
 
       marker.on('click', e => {
         L.DomEvent.stopPropagation(e);
+        // Re-center even if this hotspot was already active (e.g., after Reset World View or panning).
+        map.stop();
+        map.flyTo(region.coordinates, Math.max(map.getZoom(), 4), {
+          duration: 1.2,
+          easeLinearity: 0.25,
+        });
         callbacksRef.current.onSelectRegion(region);
       });
 
@@ -269,8 +274,10 @@ export const EarthMap: React.FC<EarthMapProps> = ({
 
     return () => {
       resizeObserver?.disconnect();
-      if (gibsLayerRef.current) {
-        gibsLayerRef.current.off();
+      if (gibsLayerRef.current && mapInstanceRef.current) {
+        mapInstanceRef.current.removeLayer(gibsLayerRef.current);
+        gibsLayerRef.current = null;
+      } else {
         gibsLayerRef.current = null;
       }
       if (mapInstanceRef.current) {
@@ -313,6 +320,7 @@ export const EarthMap: React.FC<EarthMapProps> = ({
       return;
     }
 
+    map.stop();
     map.flyTo(selectedRegion.coordinates, Math.max(map.getZoom(), isCustomPin ? 5 : 4), {
       duration: 1.2,
       easeLinearity: 0.25,

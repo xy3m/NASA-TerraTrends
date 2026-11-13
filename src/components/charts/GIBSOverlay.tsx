@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   GIBS_LAYERS,
   GIBSLayer,
   clampDateForLayer,
   getGIBSTileTemplate,
   getLayerDateBounds,
+  listCompositeDates,
 } from '../../services/connectors/gibsConnector';
 import { Layers, Eye, EyeOff, Calendar, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 
@@ -33,17 +34,30 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({
   const [selectedDate, setSelectedDate] = useState<string>(
     () => getLayerDateBounds(defaultLayer).maxDate
   );
+  const lastDatedRef = useRef<string>(getLayerDateBounds(defaultLayer).maxDate);
+  const [followLatest, setFollowLatest] = useState<boolean>(true);
   const [opacity, setOpacity] = useState<number>(0.75);
   const [isEnabled, setIsEnabled] = useState<boolean>(false);
 
   const activeLayer = GIBS_LAYERS.find(l => l.id === selectedLayerId) ?? defaultLayer;
   const dateBounds = getLayerDateBounds(activeLayer);
-  const isLatestComplete = selectedDate === dateBounds.maxDate;
+  const compositeOptions = useMemo(() => listCompositeDates(activeLayer), [activeLayer]);
+  const isStaticLayer = activeLayer.cadence === 'static';
+  const isCompositeSelect = activeLayer.cadence === '8day' || activeLayer.cadence === 'monthly';
+  const isLatestComplete = !isStaticLayer && selectedDate === dateBounds.maxDate;
 
   const emitSelection = (layer: GIBSLayer, date: string, nextOpacity = opacity) => {
     const safeDate = clampDateForLayer(layer, date);
     const tileUrl = getGIBSTileTemplate(layer.id, safeDate);
     onSelectLayer?.({ layer, date: safeDate, tileUrl, opacity: nextOpacity });
+  };
+
+  const resolveDateForLayer = (layer: GIBSLayer, useLatestMode: boolean): string => {
+    const bounds = getLayerDateBounds(layer);
+    if (layer.cadence === 'static') return '';
+    if (useLatestMode) return bounds.maxDate;
+    const seedDate = selectedDate || lastDatedRef.current;
+    return clampDateForLayer(layer, seedDate);
   };
 
   const handleToggle = () => {
@@ -57,25 +71,29 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({
     const targetLayer = selectedLayerId
       ? (GIBS_LAYERS.find(l => l.id === selectedLayerId) ?? defaultLayer)
       : defaultLayer;
-    const clampedDate = clampDateForLayer(targetLayer, selectedDate);
+    const nextDate = resolveDateForLayer(targetLayer, followLatest);
+    if (nextDate) lastDatedRef.current = nextDate;
     setSelectedLayerId(targetLayer.id);
-    setSelectedDate(clampedDate);
-    emitSelection(targetLayer, clampedDate, opacity);
+    setSelectedDate(nextDate);
+    emitSelection(targetLayer, nextDate, opacity);
   };
 
   const handleLayerChange = (layerId: string) => {
     const nextLayer = GIBS_LAYERS.find(l => l.id === layerId) ?? defaultLayer;
-    const clampedDate = clampDateForLayer(nextLayer, selectedDate);
+    const nextDate = resolveDateForLayer(nextLayer, followLatest);
+    if (nextDate) lastDatedRef.current = nextDate;
     setSelectedLayerId(nextLayer.id);
-    setSelectedDate(clampedDate);
+    setSelectedDate(nextDate);
     if (isEnabled) {
-      emitSelection(nextLayer, clampedDate, opacity);
+      emitSelection(nextLayer, nextDate, opacity);
     }
   };
 
   const handleDateChange = (rawDate: string) => {
     if (!rawDate) return;
     const clampedDate = clampDateForLayer(activeLayer, rawDate);
+    if (clampedDate) lastDatedRef.current = clampedDate;
+    setFollowLatest(clampedDate === dateBounds.maxDate);
     setSelectedDate(clampedDate);
     if (isEnabled) {
       emitSelection(activeLayer, clampedDate, opacity);
@@ -83,7 +101,10 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({
   };
 
   const handleSnapToLatest = () => {
+    if (isStaticLayer) return;
     const latest = dateBounds.maxDate;
+    lastDatedRef.current = latest;
+    setFollowLatest(true);
     setSelectedDate(latest);
     if (isEnabled) {
       emitSelection(activeLayer, latest, opacity);
@@ -129,7 +150,9 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({
               </span>
             </div>
             <select
+              aria-label="Satellite Product"
               value={activeLayer.id}
+              title={activeLayer.description}
               onChange={e => handleLayerChange(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-xs focus:outline-none focus:border-cyan-400"
             >
@@ -141,37 +164,68 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({
             </select>
           </div>
 
-          {/* Date Picker + Latest Complete Snap */}
+          {/* Date / Composite Period Control */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-[10px] text-slate-400 uppercase tracking-wider flex items-center space-x-1">
                 <Calendar className="w-3 h-3 text-cyan-400" />
-                <span>Observation Date</span>
+                <span>
+                  {activeLayer.cadence === '8day'
+                    ? 'Composite Window (8-Day)'
+                    : activeLayer.cadence === 'monthly'
+                    ? 'Analysis Month'
+                    : isStaticLayer
+                    ? 'Global Composite'
+                    : 'Observation Date'}
+                </span>
               </label>
-              <button
-                type="button"
-                onClick={handleSnapToLatest}
-                className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
-                  isLatestComplete
-                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
-                }`}
-                title={`Jump to latest complete global product date (${dateBounds.maxDate})`}
-              >
-                {isLatestComplete ? 'Latest Complete' : 'Use Latest'}
-              </button>
+              {!isStaticLayer && (
+                <button
+                  type="button"
+                  onClick={handleSnapToLatest}
+                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
+                    isLatestComplete
+                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                  }`}
+                  title={`Jump to latest settled product date (${dateBounds.maxDate})`}
+                >
+                  {isLatestComplete ? 'Latest Complete' : 'Use Latest'}
+                </button>
+              )}
             </div>
-            <input
-              type="date"
-              value={selectedDate}
-              min={dateBounds.minDate}
-              max={dateBounds.maxDate}
-              onChange={e => handleDateChange(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyan-400"
-            />
+
+            {isStaticLayer ? (
+              <div className="w-full bg-slate-900/70 border border-slate-700/70 rounded-lg px-2 py-1.5 text-slate-300 text-[11px] font-mono">
+                Cloud-Free Seasonal Mosaic
+              </div>
+            ) : isCompositeSelect ? (
+              <select
+                aria-label="Composite Period"
+                value={selectedDate}
+                onChange={e => handleDateChange(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyan-400"
+              >
+                {compositeOptions.map(opt => (
+                  <option key={opt.date} value={opt.date}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="date"
+                value={selectedDate}
+                min={dateBounds.minDate}
+                max={dateBounds.maxDate}
+                onChange={e => handleDateChange(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyan-400"
+              />
+            )}
+
             {activeLayer.rollingWindowDays && (
               <p className="text-[10px] text-slate-400 mt-1">
-                Rolling archive window: {dateBounds.minDate} to {dateBounds.maxDate}
+                Rolling window: {dateBounds.minDate} to {dateBounds.maxDate}
               </p>
             )}
           </div>
@@ -208,7 +262,7 @@ export const GIBSOverlay: React.FC<GIBSOverlayProps> = ({
             {tileStatus === 'ready' && (
               <span className="flex items-center gap-1 text-emerald-400">
                 <CheckCircle2 className="w-3 h-3" />
-                <span>Synced ({selectedDate})</span>
+                <span>Synced ({isStaticLayer ? 'Cloud-Free Mosaic' : selectedDate})</span>
               </span>
             )}
             {tileStatus === 'error' && (
