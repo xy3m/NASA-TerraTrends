@@ -96,7 +96,7 @@ export const Phase2ErrorAlert: React.FC<{
           )}
           <div>
             <div className="font-bold text-sm">
-              {isOffline ? 'Phase 2 Python Compute Backend Offline' : 'Computation Error'}
+              {isOffline ? 'Python Compute Backend Offline' : 'Computation Error'}
             </div>
             <p className="mt-1 leading-relaxed text-slate-200/90">{msg}</p>
           </div>

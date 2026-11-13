@@ -577,7 +577,7 @@ async function requestApi<T>(
         }
       } else if (response.status >= 502 && response.status <= 504) {
         throw new Phase2OfflineError(
-          `Phase 2 Python backend is unreachable (HTTP ${response.status}). Start FastAPI with: uvicorn app.main:app --port 8000`
+          `Python compute backend is unreachable (HTTP ${response.status}). Start FastAPI with: uvicorn app.main:app --port 8000`
         );
       }
       throw new Error(detail);
@@ -585,7 +585,7 @@ async function requestApi<T>(
 
     if (!contentType.includes('application/json')) {
       throw new Phase2OfflineError(
-        'Received non-JSON response from /api/v1. Ensure the Phase 2 FastAPI server is running or set VITE_BACKEND_URL.'
+        'Received non-JSON response from /api/v1. Ensure the FastAPI compute server is running or set VITE_BACKEND_URL.'
       );
     }
 
@@ -595,11 +595,11 @@ async function requestApi<T>(
       throw err;
     }
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Phase2OfflineError(`Phase 2 backend request timed out after ${Math.round(timeoutMs / 1000)}s.`);
+      throw new Phase2OfflineError(`Compute backend request timed out after ${Math.round(timeoutMs / 1000)}s.`);
     }
     if (err instanceof TypeError) {
       throw new Phase2OfflineError(
-        'Cannot connect to the Phase 2 FastAPI backend (port 8000). Start `uvicorn app.main:app --port 8000` inside `backend/`.'
+        'Cannot connect to the FastAPI compute backend (port 8000). Start `uvicorn app.main:app --port 8000` inside `backend/`.'
       );
     }
     throw err;

@@ -202,7 +202,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Cpu className="w-3.5 h-3.5" />
-            <span>Phase 2 Lab</span>
+            <span>Earth Compute Lab</span>
           </button>
         </nav>
 

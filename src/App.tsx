@@ -475,7 +475,7 @@ export const App: React.FC = () => {
                   className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-600/90 to-purple-600/90 hover:from-cyan-500 hover:to-purple-500 text-xs font-bold text-white shadow-lg cursor-pointer self-start sm:self-auto"
                 >
                   <Cpu className="w-4 h-4" />
-                  <span>Analyze in Phase 2 (SARIMA / MCMC)</span>
+                  <span>Analyze in Earth Compute Lab (SARIMA / MCMC)</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -549,12 +549,12 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* MODE 7: PHASE 2 SCIENTIFIC COMPUTE LAB */}
+        {/* MODE 7: EARTH COMPUTE LAB */}
         {currentMode === 'phase2' && (
           <div className="animate-fadeIn">
             <React.Suspense fallback={
               <div className="flex items-center justify-center p-16 text-slate-400 font-mono text-xs">
-                Loading Phase 2 Scientific Compute Engine...
+                Loading Earth Compute Lab...
               </div>
             }>
               <Phase2Lab

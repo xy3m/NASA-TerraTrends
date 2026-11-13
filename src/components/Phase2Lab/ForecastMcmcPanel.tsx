@@ -163,7 +163,7 @@ export const ForecastMcmcPanel: React.FC<ForecastMcmcPanelProps> = ({
               onClick={onClearHandoff}
               className="text-xs px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 cursor-pointer"
             >
-              Reset to Phase 2 Benchmarks
+              Reset to Built-in Benchmarks
             </button>
           ) : (
             <select

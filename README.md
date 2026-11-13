@@ -28,7 +28,7 @@
   - **Inferential & Regression**: One-sample ($\mu_0$), two-sample, and paired t-tests; One-Way & **Two-Way Factorial ANOVA**; Multiple OLS, Huber/Bisquare IRLS, and **Nonlinear Regression** (exponential, logarithmic, power, quadratic, logistic via bounded Levenberg-Marquardt).
   - **Multivariate & Time-Series**: PCA with Scree plot, Factor Loadings matrix & PC1/PC2 Score Biplot; Hamed-Rao & **TFPW (Yue et al., 2002)** autocorrelated Mann-Kendall; Trend Acceleration & **Reversal Point $t^*$**; Pettitt & CUSUM change points; **GEV Extreme Value L-Moments fit**; selectable residual diagnostics (Ljung-Box Q & p, Shapiro-Wilk, IQR/Z-Score/Grubbs outlier detection).
   - **Provenance & Missing Data Fidelity**: Preserves `-999.0` polar-night/satellite gaps as explicit `null` slots (`spanGaps: false`) and labels provenance tier (`SAT OBS`, `REANALYSIS`, `USER CSV/JSON`, `DEMO`).
-- **10. Phase 2 Scientific Compute Backend & Lab (FastAPI + Python)**:
+- **10. Earth Compute Lab & FastAPI Backend (Python)**:
   - **Auto-SARIMAX & STL Decomposition**: Kalman state-space forecasting handling native `NaN` gaps, 80%/95% prediction intervals, Ljung-Box diagnostics, and holdout backtest.
   - **Bayesian Adaptive MCMC**: Multi-chain Metropolis-within-Gibbs (`robust_ar1` Student-t + `changepoint` hinge) with split-$\hat{R}$, Bulk ESS, 95% HDI, and $P(\text{slope} > 0)$.
   - **Extreme Value Modeling**: SciPy MLE `GEV` (Block Maxima) & `GPD` (Peaks-Over-Threshold) with parametric bootstrap 95% CIs and KS goodness-of-fit.
@@ -54,8 +54,8 @@ Open your browser at:
 http://localhost:3000/
 ```
 
-### Phase 2 Backend (Python 3.11+ / FastAPI Compute Engine)
-All Phase 1 features and keyless client connectors work standalone in the browser. To unlock Phase 2 server-side modeling (SARIMA, Bayesian MCMC, GEV/GPD, Spatial FDR, DEM/SAR/LULC GeoTIFFs, NetCDF4/HDF5 `xarray`, FIRMS/ASF/CMR proxies):
+### Earth Compute Backend (Python 3.11+ / FastAPI Compute Engine)
+All core Statistical Analysis Lab features and keyless client connectors work standalone in the browser. To unlock Earth Compute Lab server-side modeling (SARIMA, Bayesian MCMC, GEV/GPD, Spatial FDR, DEM/SAR/LULC GeoTIFFs, NetCDF4/HDF5 `xarray`, FIRMS/ASF/CMR proxies):
 
 ```bash
 cd backend
@@ -71,7 +71,7 @@ docker run -p 8000:8000 --env-file .env geo-iris-backend
 ```
 
 #### Optional Credentials (`backend/.env` or Session Auth UI)
-Keyless NASA APIs (`NASA POWER`, `EONET v3 Wildfires`, `CMR Granules`, `ASF SAR Search`) work with zero keys. For authenticated feeds, copy `backend/.env.example` to `backend/.env` or enter session-only keys in the Phase 2 Lab UI:
+Keyless NASA APIs (`NASA POWER`, `EONET v3 Wildfires`, `CMR Granules`, `ASF SAR Search`) work with zero keys. For authenticated feeds, copy `backend/.env.example` to `backend/.env` or enter session-only keys in the Earth Compute Lab UI:
 - `NASA_FIRMS_MAP_KEY`: Enables sub-km VIIRS / MODIS active fire FRP queries.
 - `EARTHDATA_TOKEN` (or `EARTHDATA_USERNAME` / `EARTHDATA_PASSWORD`): Enables authenticated AppEEARS task submission & Earthdata access.
 - `VITE_BACKEND_URL` (frontend optional): Set when deploying static frontend separately from FastAPI (defaults to Vite `/api` proxy locally).
@@ -180,7 +180,7 @@ Geo-Iris/
 │   │   └── regionalContrasts.ts     # Opposite regional trend paired scenarios
 │   ├── workers/                     # Off-thread statistical Web Worker + client
 │   ├── components/
-│   │   ├── Phase2Lab/               # SARIMA/MCMC/EVT, Spatial FDR, DEM/SAR/LULC, FIRMS, NetCDF4
+│   │   ├── Phase2Lab/               # Earth Compute Lab UI (SARIMA/MCMC/EVT, Spatial FDR, DEM/SAR/LULC, FIRMS, NetCDF4)
 │   │   ├── StatisticalLab/          # Univariate, Multivariate, Inferential, Regression, Diagnostics
 │   │   ├── Navbar.tsx               # Navigation, GEOIRIS branding, API status
 │   │   ├── EarthMap.tsx             # Interactive Leaflet map & coordinate picker

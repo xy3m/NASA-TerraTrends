@@ -87,7 +87,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
               className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-xs font-bold text-white shadow-md transition-all"
             >
               <TrendingUp className="w-3.5 h-3.5" />
-              <span>Run SARIMA / Bayesian MCMC (Phase 2)</span>
+              <span>Run in Earth Compute Lab (SARIMA / MCMC)</span>
             </button>
           )}
           <button

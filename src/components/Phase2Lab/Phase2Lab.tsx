@@ -128,14 +128,14 @@ export const Phase2Lab: React.FC<Phase2LabProps> = ({ initialHandoff, onClearHan
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
-      {/* Phase 2 Header Card */}
+      {/* Header Card */}
       <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/35 border border-slate-800 p-5 shadow-2xl space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-500/15 border border-cyan-500/35 text-cyan-300 text-[10px] font-bold uppercase tracking-wider">
                 <Cpu className="w-3.5 h-3.5" />
-                Phase 2 Scientific Engine
+                Python Compute Engine
               </span>
               {health ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-[10px] font-bold">
@@ -150,7 +150,7 @@ export const Phase2Lab: React.FC<Phase2LabProps> = ({ initialHandoff, onClearHan
               )}
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              Geo-Iris Phase 2 Computational Modeling &amp; Geospatial Lab
+              Geo-Iris Earth Compute &amp; Geospatial Modeling Lab
             </h1>
             <p className="text-xs text-slate-400 max-w-3xl">
               Server-side Python scientific workflows powered by Statsmodels SARIMAX, Adaptive MCMC posterior
